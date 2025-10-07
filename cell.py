@@ -11,7 +11,8 @@ import copy as copy_module
 from typing import List, Union, Tuple, Dict, Optional
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from z3 import *
+from scipy.optimize import linprog, minimize
+import numpy as np
 
 
 class Cell:
@@ -41,7 +42,7 @@ class Cell:
         self.constraints = []
         self.is_leaf = False
         self.layer_name = None
-        self._z3_vars = None  # Cache for Z3 variables
+        self._var_indices = None  # Cache for variable indices in optimization vector
 
         # Parse arguments
         for arg in args:
@@ -82,43 +83,47 @@ class Cell:
         """
         self.constraints.append((cell1, constraint_str, cell2))
 
-    def _get_z3_vars(self) -> Tuple[Real, Real, Real, Real]:
+    def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
         """
-        Get or create Z3 variables for this cell's position
+        Get or create variable indices for this cell's position in optimization vector
+
+        Args:
+            var_counter: Dictionary mapping cell id to starting variable index
 
         Returns:
-            Tuple of Z3 Real variables (x1, y1, x2, y2)
+            Tuple of variable indices (x1_idx, y1_idx, x2_idx, y2_idx)
         """
-        if self._z3_vars is None:
-            # Use object id to ensure uniqueness across copied instances
-            unique_id = id(self)
-            self._z3_vars = (
-                Real(f'{self.name}_{unique_id}_x1'),
-                Real(f'{self.name}_{unique_id}_y1'),
-                Real(f'{self.name}_{unique_id}_x2'),
-                Real(f'{self.name}_{unique_id}_y2')
-            )
-        return self._z3_vars
+        cell_id = id(self)
+        if cell_id not in var_counter:
+            # Assign 4 consecutive indices for this cell's variables
+            start_idx = len(var_counter) * 4
+            var_counter[cell_id] = start_idx
 
-    def _parse_constraint(self, constraint_str: str, cell1: 'Cell', cell2: 'Cell') -> List:
+        start_idx = var_counter[cell_id]
+        return (start_idx, start_idx + 1, start_idx + 2, start_idx + 3)
+
+    def _parse_constraint(self, constraint_str: str, cell1: 'Cell', cell2: 'Cell',
+                         var_counter: Dict[int, int]) -> List[Tuple[str, str, str, str]]:
         """
-        Parse constraint string into Z3 constraints
+        Parse constraint string into constraint tuples for optimization
 
         Args:
             constraint_str: Constraint string like 'sx1<ox2+3, sy2+5<oy1'
             cell1: Cell mapped to 's' prefix
             cell2: Cell mapped to 'o' prefix
+            var_counter: Variable counter dictionary
 
         Returns:
-            List of Z3 constraint expressions
+            List of constraint tuples (operator, left_expr, right_expr, type)
+            where type is 'ineq' for inequalities or 'eq' for equality
         """
-        z3_constraints = []
+        parsed_constraints = []
 
-        # Get Z3 variables for both cells
-        s_vars = cell1._get_z3_vars()
-        o_vars = cell2._get_z3_vars()
+        # Get variable indices for both cells
+        s_vars = cell1._get_var_indices(var_counter)
+        o_vars = cell2._get_var_indices(var_counter)
 
-        # Map variable names to Z3 variables
+        # Map variable names to indices
         var_map = {
             'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3],
             'ox1': o_vars[0], 'oy1': o_vars[1], 'ox2': o_vars[2], 'oy2': o_vars[3]
@@ -143,57 +148,83 @@ class Cell:
             left = left.strip()
             right = right.strip()
 
-            # Parse expressions (supports +, -, *, and numbers)
-            left_expr = self._parse_expression(left, var_map)
-            right_expr = self._parse_expression(right, var_map)
+            # Store constraint info for later processing
+            parsed_constraints.append((operator, left, right, var_map))
 
-            # Create Z3 constraint
-            if operator == '<':
-                z3_constraints.append(left_expr < right_expr)
-            elif operator == '>':
-                z3_constraints.append(left_expr > right_expr)
-            elif operator == '<=':
-                z3_constraints.append(left_expr <= right_expr)
-            elif operator == '>=':
-                z3_constraints.append(left_expr >= right_expr)
-            elif operator == '=':
-                z3_constraints.append(left_expr == right_expr)
+        return parsed_constraints
 
-        return z3_constraints
-
-    def _parse_expression(self, expr_str: str, var_map: Dict[str, Real]) -> ArithRef:
+    def _parse_expression_to_coeffs(self, expr_str: str, var_map: Dict[str, int], n_vars: int) -> Tuple[np.ndarray, float]:
         """
-        Parse an arithmetic expression string into Z3 expression
+        Parse an arithmetic expression string into coefficient vector for linear optimization
 
         Args:
             expr_str: Expression string like 'sx1+5' or 'ox2*2-3'
-            var_map: Mapping of variable names to Z3 variables
+            var_map: Mapping of variable names to indices
+            n_vars: Total number of variables
 
         Returns:
-            Z3 arithmetic expression
+            Tuple of (coefficient vector, constant term)
         """
+        # Initialize coefficient vector
+        coeffs = np.zeros(n_vars)
+        constant = 0.0
+
         # Tokenize the expression
-        # Support: variables (sx1, oy2, etc.), numbers, +, -, *, (, )
         tokens = re.findall(r'[so][xy][12]|\d+\.?\d*|[+\-*/()]', expr_str)
 
-        # Build Z3 expression using simple recursive descent or stack-based evaluation
-        # For simplicity, we'll use eval with a custom namespace (careful approach)
-        # Replace variable names with Z3 variables
+        # Parse tokens to build coefficients
+        # Simple parsing: handles var, const, var+const, var-const, const*var, etc.
+        i = 0
+        sign = 1.0
 
-        expr_for_eval = expr_str
-        for var_name, z3_var in var_map.items():
-            expr_for_eval = re.sub(r'\b' + var_name + r'\b', f'var_map["{var_name}"]', expr_for_eval)
+        while i < len(tokens):
+            token = tokens[i]
 
-        # Evaluate in safe namespace
-        try:
-            result = eval(expr_for_eval, {"__builtins__": {}}, {"var_map": var_map})
-            return result
-        except Exception as e:
-            raise ValueError(f"Failed to parse expression '{expr_str}': {e}")
+            if token == '+':
+                sign = 1.0
+            elif token == '-':
+                sign = -1.0
+            elif token == '*':
+                # Skip multiplication operator, handled implicitly
+                pass
+            elif token in var_map:
+                # Variable token
+                var_idx = var_map[token]
+                coeff = sign
+
+                # Check if preceded by a number (multiplication)
+                if i > 0 and tokens[i-1] not in ['+', '-', '*'] and re.match(r'\d+\.?\d*', tokens[i-1]):
+                    coeff *= float(tokens[i-1])
+
+                # Check if followed by * and number
+                if i + 2 < len(tokens) and tokens[i+1] == '*':
+                    coeff *= float(tokens[i+2])
+
+                coeffs[var_idx] += coeff
+                sign = 1.0  # Reset sign
+            elif re.match(r'\d+\.?\d*', token):
+                # Number token - could be coefficient or constant
+                num = float(token)
+
+                # Check if followed by variable
+                if i + 1 < len(tokens) and tokens[i+1] in var_map:
+                    # It's a coefficient, handled when we see the variable
+                    pass
+                elif i + 1 < len(tokens) and tokens[i+1] == '*':
+                    # Multiplication, handled when we see the variable
+                    pass
+                else:
+                    # It's a constant
+                    constant += sign * num
+                    sign = 1.0
+
+            i += 1
+
+        return coeffs, constant
 
     def solver(self, fix_leaf_positions: bool = True) -> bool:
         """
-        Solve constraints to determine cell positions
+        Solve constraints to determine cell positions using SciPy optimization
 
         Args:
             fix_leaf_positions: If True, assigns default positions to leaf cells
@@ -201,45 +232,106 @@ class Cell:
         Returns:
             True if solution found, False otherwise
         """
-        z3_solver = Solver()
+        all_cells = self._get_all_cells()
+
+        # Build variable counter
+        var_counter = {}
+        for cell in all_cells:
+            cell._get_var_indices(var_counter)
+
+        n_vars = len(var_counter) * 4
+
+        # Build constraints in SciPy format
+        inequality_constraints = []  # List of LinearConstraint objects
+        equality_constraints = []
+        bounds = [(None, None)] * n_vars  # Bounds for each variable
 
         # Add basic geometric constraints (x2 > x1, y2 > y1)
-        all_cells = self._get_all_cells()
         for cell in all_cells:
-            x1, y1, x2, y2 = cell._get_z3_vars()
-            z3_solver.add(x2 > x1)
-            z3_solver.add(y2 > y1)
+            x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
+
+            # x2 > x1 => x2 - x1 > 0 => -x1 + x2 >= 0.01 (small epsilon for strict inequality)
+            A = np.zeros(n_vars)
+            A[x1_idx] = -1
+            A[x2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
+
+            # y2 > y1 => y2 - y1 > 0
+            A = np.zeros(n_vars)
+            A[y1_idx] = -1
+            A[y2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
 
         # For leaf cells, optionally set default sizes
         if fix_leaf_positions:
             for cell in all_cells:
                 if cell.is_leaf:
-                    x1, y1, x2, y2 = cell._get_z3_vars()
-                    # Default size for leaf cells if not constrained
-                    z3_solver.add(x1 >= 0)
-                    z3_solver.add(y1 >= 0)
-                    # Give it some default size
-                    z3_solver.add(x2 - x1 >= 10)
-                    z3_solver.add(y2 - y1 >= 10)
+                    x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
+
+                    # x1 >= 0
+                    A = np.zeros(n_vars)
+                    A[x1_idx] = 1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+                    # y1 >= 0
+                    A = np.zeros(n_vars)
+                    A[y1_idx] = 1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+                    # x2 - x1 >= 10
+                    A = np.zeros(n_vars)
+                    A[x1_idx] = -1
+                    A[x2_idx] = 1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
+
+                    # y2 - y1 >= 10
+                    A = np.zeros(n_vars)
+                    A[y1_idx] = -1
+                    A[y2_idx] = 1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
 
         # Add parent-child bounding constraints
-        self._add_parent_child_constraints(z3_solver)
+        self._add_parent_child_constraints_scipy(inequality_constraints, var_counter, n_vars)
 
-        # Add all constraints from the hierarchy
-        self._add_constraints_recursive(z3_solver)
+        # Add all user constraints from the hierarchy
+        self._add_constraints_recursive_scipy(inequality_constraints, equality_constraints,
+                                               var_counter, n_vars)
 
-        # Solve
-        if z3_solver.check() == sat:
-            model = z3_solver.model()
+        # Initial guess - spread out cells
+        x0 = np.zeros(n_vars)
+        for i, cell in enumerate(all_cells):
+            x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
+            x0[x1_idx] = i * 30
+            x0[y1_idx] = i * 30
+            x0[x2_idx] = i * 30 + 20
+            x0[y2_idx] = i * 30 + 20
 
+        # Objective: minimize sum of areas (or minimize total layout size)
+        def objective(x):
+            total = 0
+            for cell in all_cells:
+                x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
+                width = x[x2_idx] - x[x1_idx]
+                height = x[y2_idx] - x[y1_idx]
+                total += width * height
+            return total
+
+        # Combine all constraints
+        all_constraints = inequality_constraints + equality_constraints
+
+        # Solve using SciPy minimize
+        result = minimize(objective, x0, method='SLSQP', constraints=all_constraints,
+                         options={'maxiter': 1000, 'ftol': 1e-6})
+
+        if result.success:
             # Extract solutions
             for cell in all_cells:
-                x1, y1, x2, y2 = cell._get_z3_vars()
+                x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
                 cell.pos_list = [
-                    self._z3_value_to_float(model[x1]),
-                    self._z3_value_to_float(model[y1]),
-                    self._z3_value_to_float(model[x2]),
-                    self._z3_value_to_float(model[y2])
+                    float(result.x[x1_idx]),
+                    float(result.x[y1_idx]),
+                    float(result.x[x2_idx]),
+                    float(result.x[y2_idx])
                 ]
 
             # Update parent bounds to tightly fit children
@@ -247,22 +339,8 @@ class Cell:
 
             return True
         else:
+            print(f"Optimization failed: {result.message}")
             return False
-
-    def _z3_value_to_float(self, z3_val) -> float:
-        """Convert Z3 value to Python float"""
-        if z3_val is None:
-            return 0.0
-
-        # Handle rational numbers
-        if isinstance(z3_val, RatNumRef):
-            return float(z3_val.numerator_as_long()) / float(z3_val.denominator_as_long())
-
-        # Try to convert to float
-        try:
-            return float(z3_val.as_decimal(10).rstrip('?'))
-        except:
-            return 0.0
 
     def _get_all_cells(self) -> List['Cell']:
         """
@@ -325,45 +403,99 @@ class Cell:
             return 0
         return 1 + max(self._get_cell_depth(child) for child in cell.children)
 
-    def _add_parent_child_constraints(self, z3_solver: Solver):
+    def _add_parent_child_constraints_scipy(self, inequality_constraints: List,
+                                             var_counter: Dict[int, int], n_vars: int):
         """
         Add constraints ensuring parent cells encompass their children
 
         Args:
-            z3_solver: Z3 Solver instance
+            inequality_constraints: List to append constraint dicts to
+            var_counter: Variable counter dictionary
+            n_vars: Total number of variables
         """
         all_cells = self._get_all_cells()
 
         for cell in all_cells:
             # Only add bounding constraints for container cells (non-leaf with children)
             if not cell.is_leaf and len(cell.children) > 0:
-                parent_x1, parent_y1, parent_x2, parent_y2 = cell._get_z3_vars()
+                parent_x1, parent_y1, parent_x2, parent_y2 = cell._get_var_indices(var_counter)
 
                 for child in cell.children:
-                    child_x1, child_y1, child_x2, child_y2 = child._get_z3_vars()
+                    child_x1, child_y1, child_x2, child_y2 = child._get_var_indices(var_counter)
 
                     # Parent must encompass child
-                    z3_solver.add(parent_x1 <= child_x1)
-                    z3_solver.add(parent_y1 <= child_y1)
-                    z3_solver.add(parent_x2 >= child_x2)
-                    z3_solver.add(parent_y2 >= child_y2)
+                    # parent_x1 <= child_x1 => child_x1 - parent_x1 >= 0
+                    A = np.zeros(n_vars)
+                    A[parent_x1] = -1
+                    A[child_x1] = 1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
 
-    def _add_constraints_recursive(self, z3_solver: Solver):
+                    # parent_y1 <= child_y1
+                    A = np.zeros(n_vars)
+                    A[parent_y1] = -1
+                    A[child_y1] = 1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+                    # parent_x2 >= child_x2 => parent_x2 - child_x2 >= 0
+                    A = np.zeros(n_vars)
+                    A[parent_x2] = 1
+                    A[child_x2] = -1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+                    # parent_y2 >= child_y2
+                    A = np.zeros(n_vars)
+                    A[parent_y2] = 1
+                    A[child_y2] = -1
+                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+    def _add_constraints_recursive_scipy(self, inequality_constraints: List,
+                                          equality_constraints: List,
+                                          var_counter: Dict[int, int], n_vars: int):
         """
-        Recursively add all constraints to Z3 solver
+        Recursively add all user constraints
 
         Args:
-            z3_solver: Z3 Solver instance
+            inequality_constraints: List to append inequality constraint dicts to
+            equality_constraints: List to append equality constraint dicts to
+            var_counter: Variable counter dictionary
+            n_vars: Total number of variables
         """
         # Add constraints from this cell
         for cell1, constraint_str, cell2 in self.constraints:
-            z3_constraints = self._parse_constraint(constraint_str, cell1, cell2)
-            for c in z3_constraints:
-                z3_solver.add(c)
+            parsed_constraints = self._parse_constraint(constraint_str, cell1, cell2, var_counter)
+
+            for operator, left_expr, right_expr, var_map in parsed_constraints:
+                # Parse both expressions into coefficient vectors
+                left_coeffs, left_const = self._parse_expression_to_coeffs(left_expr, var_map, n_vars)
+                right_coeffs, right_const = self._parse_expression_to_coeffs(right_expr, var_map, n_vars)
+
+                # Constraint: left OP right => left - right OP 0
+                A = left_coeffs - right_coeffs
+                b = right_const - left_const
+
+                if operator in ['<', '<=']:
+                    # left <= right => left - right <= 0 => -(left - right) >= 0
+                    inequality_constraints.append({
+                        'type': 'ineq',
+                        'fun': lambda x, A=A, b=b: -np.dot(A, x) - b
+                    })
+                elif operator in ['>', '>=']:
+                    # left >= right => left - right >= 0
+                    inequality_constraints.append({
+                        'type': 'ineq',
+                        'fun': lambda x, A=A, b=b: np.dot(A, x) + b
+                    })
+                elif operator == '=':
+                    # left = right => left - right = 0
+                    equality_constraints.append({
+                        'type': 'eq',
+                        'fun': lambda x, A=A, b=b: np.dot(A, x) + b
+                    })
 
         # Recursively add constraints from children
         for child in self.children:
-            child._add_constraints_recursive(z3_solver)
+            child._add_constraints_recursive_scipy(inequality_constraints, equality_constraints,
+                                                    var_counter, n_vars)
 
     def draw(self, solve_first: bool = True, ax=None, show: bool = True):
         """
@@ -462,26 +594,26 @@ class Cell:
         """
         Create a deep copy of this Cell instance
 
-        Note: Z3 variables are reset so the copy gets fresh constraint variables
+        Note: Variable indices are reset so the copy gets fresh constraint variables
 
         Returns:
             New Cell instance with copied data
         """
         new_cell = copy_module.deepcopy(self)
-        # Reset Z3 variables for the new copy and all descendants
-        self._reset_z3_vars_recursive(new_cell)
+        # Reset variable indices for the new copy and all descendants
+        self._reset_var_indices_recursive(new_cell)
         return new_cell
 
-    def _reset_z3_vars_recursive(self, cell: 'Cell'):
+    def _reset_var_indices_recursive(self, cell: 'Cell'):
         """
-        Recursively reset Z3 variables for a cell and its children
+        Recursively reset variable indices for a cell and its children
 
         Args:
             cell: Cell to reset variables for
         """
-        cell._z3_vars = None
+        cell._var_indices = None
         for child in cell.children:
-            self._reset_z3_vars_recursive(child)
+            self._reset_var_indices_recursive(child)
 
     def __repr__(self):
         return f"Cell(name={self.name}, pos={self.pos_list}, children={len(self.children)})"

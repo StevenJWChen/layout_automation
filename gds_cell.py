@@ -11,7 +11,8 @@ import copy as copy_module
 from typing import List, Union, Tuple, Dict, Optional
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from z3 import *
+from scipy.optimize import linprog, minimize
+import numpy as np
 import gdstk
 
 
@@ -36,24 +37,21 @@ class Polygon:
         self.name = name
         self.layer = layer
         self.pos_list = [None, None, None, None]  # [x1, y1, x2, y2]
-        self._z3_vars = None
+        self._var_indices = None
 
-    def _get_z3_vars(self) -> Tuple[Real, Real, Real, Real]:
-        """Get or create Z3 variables for this polygon's position"""
-        if self._z3_vars is None:
-            unique_id = id(self)
-            self._z3_vars = (
-                Real(f'{self.name}_{unique_id}_x1'),
-                Real(f'{self.name}_{unique_id}_y1'),
-                Real(f'{self.name}_{unique_id}_x2'),
-                Real(f'{self.name}_{unique_id}_y2')
-            )
-        return self._z3_vars
+    def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
+        """Get or create variable indices for this polygon's position"""
+        obj_id = id(self)
+        if obj_id not in var_counter:
+            start_idx = len(var_counter) * 4
+            var_counter[obj_id] = start_idx
+        start_idx = var_counter[obj_id]
+        return (start_idx, start_idx + 1, start_idx + 2, start_idx + 3)
 
     def copy(self) -> 'Polygon':
         """Create a deep copy"""
         new_poly = copy_module.deepcopy(self)
-        new_poly._z3_vars = None  # Reset Z3 vars
+        new_poly._var_indices = None  # Reset variable indices
         return new_poly
 
     def __repr__(self):
@@ -82,24 +80,21 @@ class CellInstance:
         self.name = name
         self.cell = cell  # Reference to master cell
         self.pos_list = [None, None, None, None]
-        self._z3_vars = None
+        self._var_indices = None
 
-    def _get_z3_vars(self) -> Tuple[Real, Real, Real, Real]:
-        """Get or create Z3 variables for this instance's position"""
-        if self._z3_vars is None:
-            unique_id = id(self)
-            self._z3_vars = (
-                Real(f'{self.name}_{unique_id}_x1'),
-                Real(f'{self.name}_{unique_id}_y1'),
-                Real(f'{self.name}_{unique_id}_x2'),
-                Real(f'{self.name}_{unique_id}_y2')
-            )
-        return self._z3_vars
+    def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
+        """Get or create variable indices for this instance's position"""
+        obj_id = id(self)
+        if obj_id not in var_counter:
+            start_idx = len(var_counter) * 4
+            var_counter[obj_id] = start_idx
+        start_idx = var_counter[obj_id]
+        return (start_idx, start_idx + 1, start_idx + 2, start_idx + 3)
 
     def copy(self) -> 'CellInstance':
-        """Create a deep copy with new Z3 vars"""
+        """Create a deep copy with new variable indices"""
         new_inst = copy_module.deepcopy(self)
-        new_inst._z3_vars = None
+        new_inst._var_indices = None
         return new_inst
 
     def __repr__(self):
@@ -172,15 +167,16 @@ class Cell:
 
     def _parse_constraint(self, constraint_str: str,
                          obj1: Union[Polygon, CellInstance],
-                         obj2: Union[Polygon, CellInstance]) -> List:
-        """Parse constraint string into Z3 constraints"""
-        z3_constraints = []
+                         obj2: Union[Polygon, CellInstance],
+                         var_counter: Dict[int, int]) -> List[Tuple[str, str, str, str]]:
+        """Parse constraint string into constraint tuples for optimization"""
+        parsed_constraints = []
 
-        # Get Z3 variables for both objects
-        s_vars = obj1._get_z3_vars()
-        o_vars = obj2._get_z3_vars()
+        # Get variable indices for both objects
+        s_vars = obj1._get_var_indices(var_counter)
+        o_vars = obj2._get_var_indices(var_counter)
 
-        # Map variable names to Z3 variables
+        # Map variable names to indices
         var_map = {
             'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3],
             'ox1': o_vars[0], 'oy1': o_vars[1], 'ox2': o_vars[2], 'oy2': o_vars[3]
@@ -205,35 +201,56 @@ class Cell:
             left = left.strip()
             right = right.strip()
 
-            # Parse expressions
-            left_expr = self._parse_expression(left, var_map)
-            right_expr = self._parse_expression(right, var_map)
+            # Store constraint info for later processing
+            parsed_constraints.append((operator, left, right, var_map))
 
-            # Create Z3 constraint
-            if operator == '<':
-                z3_constraints.append(left_expr < right_expr)
-            elif operator == '>':
-                z3_constraints.append(left_expr > right_expr)
-            elif operator == '<=':
-                z3_constraints.append(left_expr <= right_expr)
-            elif operator == '>=':
-                z3_constraints.append(left_expr >= right_expr)
-            elif operator == '=':
-                z3_constraints.append(left_expr == right_expr)
+        return parsed_constraints
 
-        return z3_constraints
+    def _parse_expression_to_coeffs(self, expr_str: str, var_map: Dict[str, int], n_vars: int) -> Tuple[np.ndarray, float]:
+        """Parse an arithmetic expression string into coefficient vector for linear optimization"""
+        coeffs = np.zeros(n_vars)
+        constant = 0.0
 
-    def _parse_expression(self, expr_str: str, var_map: Dict[str, Real]) -> ArithRef:
-        """Parse an arithmetic expression string into Z3 expression"""
-        expr_for_eval = expr_str
-        for var_name, z3_var in var_map.items():
-            expr_for_eval = re.sub(r'\b' + var_name + r'\b', f'var_map["{var_name}"]', expr_for_eval)
+        tokens = re.findall(r'[so][xy][12]|\d+\.?\d*|[+\-*/()]', expr_str)
 
-        try:
-            result = eval(expr_for_eval, {"__builtins__": {}}, {"var_map": var_map})
-            return result
-        except Exception as e:
-            raise ValueError(f"Failed to parse expression '{expr_str}': {e}")
+        i = 0
+        sign = 1.0
+
+        while i < len(tokens):
+            token = tokens[i]
+
+            if token == '+':
+                sign = 1.0
+            elif token == '-':
+                sign = -1.0
+            elif token == '*':
+                pass
+            elif token in var_map:
+                var_idx = var_map[token]
+                coeff = sign
+
+                if i > 0 and tokens[i-1] not in ['+', '-', '*'] and re.match(r'\d+\.?\d*', tokens[i-1]):
+                    coeff *= float(tokens[i-1])
+
+                if i + 2 < len(tokens) and tokens[i+1] == '*':
+                    coeff *= float(tokens[i+2])
+
+                coeffs[var_idx] += coeff
+                sign = 1.0
+            elif re.match(r'\d+\.?\d*', token):
+                num = float(token)
+
+                if i + 1 < len(tokens) and tokens[i+1] in var_map:
+                    pass
+                elif i + 1 < len(tokens) and tokens[i+1] == '*':
+                    pass
+                else:
+                    constant += sign * num
+                    sign = 1.0
+
+            i += 1
+
+        return coeffs, constant
 
     def _get_all_elements(self) -> Tuple[List[Polygon], List[CellInstance], List[Cell]]:
         """
@@ -261,7 +278,7 @@ class Cell:
 
     def solver(self, fix_polygon_size: bool = True) -> bool:
         """
-        Solve constraints to determine positions
+        Solve constraints to determine positions using SciPy optimization
 
         Args:
             fix_polygon_size: If True, assigns default sizes to polygons
@@ -269,64 +286,173 @@ class Cell:
         Returns:
             True if solution found, False otherwise
         """
-        z3_solver = Solver()
-
         # Get all elements (deduplicates polygons from shared cells)
         all_polygons, all_instances, all_cells_dict = self._get_all_elements()
 
+        # Build variable counter
+        var_counter = {}
+        for poly in all_polygons:
+            poly._get_var_indices(var_counter)
+        for inst in all_instances:
+            inst._get_var_indices(var_counter)
+
+        n_vars = len(var_counter) * 4
+
+        # Build constraints in SciPy format
+        inequality_constraints = []
+        equality_constraints = []
+
         # Add basic geometric constraints (x2 > x1, y2 > y1)
         for poly in all_polygons:
-            x1, y1, x2, y2 = poly._get_z3_vars()
-            z3_solver.add(x2 > x1)
-            z3_solver.add(y2 > y1)
+            x1_idx, y1_idx, x2_idx, y2_idx = poly._get_var_indices(var_counter)
+
+            # x2 > x1
+            A = np.zeros(n_vars)
+            A[x1_idx] = -1
+            A[x2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
+
+            # y2 > y1
+            A = np.zeros(n_vars)
+            A[y1_idx] = -1
+            A[y2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
 
             # Default size for polygons
             if fix_polygon_size:
-                z3_solver.add(x1 >= 0)
-                z3_solver.add(y1 >= 0)
-                z3_solver.add(x2 - x1 >= 10)
-                z3_solver.add(y2 - y1 >= 10)
+                # x1 >= 0
+                A = np.zeros(n_vars)
+                A[x1_idx] = 1
+                inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+                # y1 >= 0
+                A = np.zeros(n_vars)
+                A[y1_idx] = 1
+                inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+
+                # x2 - x1 >= 10
+                A = np.zeros(n_vars)
+                A[x1_idx] = -1
+                A[x2_idx] = 1
+                inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
+
+                # y2 - y1 >= 10
+                A = np.zeros(n_vars)
+                A[y1_idx] = -1
+                A[y2_idx] = 1
+                inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
 
         for inst in all_instances:
-            x1, y1, x2, y2 = inst._get_z3_vars()
-            z3_solver.add(x2 > x1)
-            z3_solver.add(y2 > y1)
-            # Give instances a reasonable default size if not otherwise constrained
-            z3_solver.add(x2 - x1 >= 10)
-            z3_solver.add(y2 - y1 >= 10)
+            x1_idx, y1_idx, x2_idx, y2_idx = inst._get_var_indices(var_counter)
 
-        # Add instance-cell bounding constraints
-        self._add_instance_constraints_recursive(z3_solver)
+            # x2 > x1
+            A = np.zeros(n_vars)
+            A[x1_idx] = -1
+            A[x2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
+
+            # y2 > y1
+            A = np.zeros(n_vars)
+            A[y1_idx] = -1
+            A[y2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
+
+            # Default size
+            A = np.zeros(n_vars)
+            A[x1_idx] = -1
+            A[x2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
+
+            A = np.zeros(n_vars)
+            A[y1_idx] = -1
+            A[y2_idx] = 1
+            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
 
         # Add user constraints from all cells
         for cell in all_cells_dict.values():
             for obj1, constraint_str, obj2 in cell.constraints:
-                z3_constraints = cell._parse_constraint(constraint_str, obj1, obj2)
-                for c in z3_constraints:
-                    z3_solver.add(c)
+                parsed_constraints = cell._parse_constraint(constraint_str, obj1, obj2, var_counter)
 
-        # Solve
-        if z3_solver.check() == sat:
-            model = z3_solver.model()
+                for operator, left_expr, right_expr, var_map in parsed_constraints:
+                    left_coeffs, left_const = cell._parse_expression_to_coeffs(left_expr, var_map, n_vars)
+                    right_coeffs, right_const = cell._parse_expression_to_coeffs(right_expr, var_map, n_vars)
 
+                    A = left_coeffs - right_coeffs
+                    b = right_const - left_const
+
+                    if operator in ['<', '<=']:
+                        inequality_constraints.append({
+                            'type': 'ineq',
+                            'fun': lambda x, A=A, b=b: -np.dot(A, x) - b
+                        })
+                    elif operator in ['>', '>=']:
+                        inequality_constraints.append({
+                            'type': 'ineq',
+                            'fun': lambda x, A=A, b=b: np.dot(A, x) + b
+                        })
+                    elif operator == '=':
+                        equality_constraints.append({
+                            'type': 'eq',
+                            'fun': lambda x, A=A, b=b: np.dot(A, x) + b
+                        })
+
+        # Initial guess
+        x0 = np.zeros(n_vars)
+        for i, poly in enumerate(all_polygons):
+            x1_idx, y1_idx, x2_idx, y2_idx = poly._get_var_indices(var_counter)
+            x0[x1_idx] = i * 30
+            x0[y1_idx] = i * 30
+            x0[x2_idx] = i * 30 + 20
+            x0[y2_idx] = i * 30 + 20
+        for i, inst in enumerate(all_instances):
+            x1_idx, y1_idx, x2_idx, y2_idx = inst._get_var_indices(var_counter)
+            base = (len(all_polygons) + i) * 30
+            x0[x1_idx] = base
+            x0[y1_idx] = base
+            x0[x2_idx] = base + 20
+            x0[y2_idx] = base + 20
+
+        # Objective: minimize sum of areas
+        def objective(x):
+            total = 0
+            for poly in all_polygons:
+                x1_idx, y1_idx, x2_idx, y2_idx = poly._get_var_indices(var_counter)
+                width = x[x2_idx] - x[x1_idx]
+                height = x[y2_idx] - x[y1_idx]
+                total += width * height
+            for inst in all_instances:
+                x1_idx, y1_idx, x2_idx, y2_idx = inst._get_var_indices(var_counter)
+                width = x[x2_idx] - x[x1_idx]
+                height = x[y2_idx] - x[y1_idx]
+                total += width * height
+            return total
+
+        # Combine all constraints
+        all_constraints = inequality_constraints + equality_constraints
+
+        # Solve using SciPy minimize
+        result = minimize(objective, x0, method='SLSQP', constraints=all_constraints,
+                         options={'maxiter': 1000, 'ftol': 1e-6})
+
+        if result.success:
             # Extract solutions for polygons
             for poly in all_polygons:
-                x1, y1, x2, y2 = poly._get_z3_vars()
+                x1_idx, y1_idx, x2_idx, y2_idx = poly._get_var_indices(var_counter)
                 poly.pos_list = [
-                    self._z3_value_to_float(model[x1]),
-                    self._z3_value_to_float(model[y1]),
-                    self._z3_value_to_float(model[x2]),
-                    self._z3_value_to_float(model[y2])
+                    float(result.x[x1_idx]),
+                    float(result.x[y1_idx]),
+                    float(result.x[x2_idx]),
+                    float(result.x[y2_idx])
                 ]
 
             # Extract solutions for instances
             for inst in all_instances:
-                x1, y1, x2, y2 = inst._get_z3_vars()
+                x1_idx, y1_idx, x2_idx, y2_idx = inst._get_var_indices(var_counter)
                 inst.pos_list = [
-                    self._z3_value_to_float(model[x1]),
-                    self._z3_value_to_float(model[y1]),
-                    self._z3_value_to_float(model[x2]),
-                    self._z3_value_to_float(model[y2])
+                    float(result.x[x1_idx]),
+                    float(result.x[y1_idx]),
+                    float(result.x[x2_idx]),
+                    float(result.x[y2_idx])
                 ]
 
             # Update instance bounds to match their cell contents
@@ -334,32 +460,15 @@ class Cell:
 
             return True
         else:
+            print(f"Optimization failed: {result.message}")
             return False
 
-    def _z3_value_to_float(self, z3_val) -> float:
-        """Convert Z3 value to Python float"""
-        if z3_val is None:
-            return 0.0
-
-        if isinstance(z3_val, RatNumRef):
-            return float(z3_val.numerator_as_long()) / float(z3_val.denominator_as_long())
-
-        try:
-            return float(z3_val.as_decimal(10).rstrip('?'))
-        except:
-            return 0.0
-
-    def _add_instance_constraints_recursive(self, z3_solver: Solver):
+    def _add_instance_constraints_recursive(self):
         """
-        Add constraints for instances
-
-        Note: We don't add bounding constraints here because multiple instances
-        of the same cell share the same polygon objects. Instead, instance bounds
-        are computed post-solve in _update_instance_bounds().
+        Recursively process nested instances (no longer needed for SciPy version)
         """
-        # Recursively process nested instances
         for instance in self.instances:
-            instance.cell._add_instance_constraints_recursive(z3_solver)
+            instance.cell._add_instance_constraints_recursive()
 
 
     def _update_instance_bounds(self):
