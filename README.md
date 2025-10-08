@@ -6,6 +6,7 @@ A Python library for constraint-based hierarchical layout automation using SciPy
 
 ## Features
 
+### Core Features
 - **Constraint-based positioning**: Define spatial relationships using intuitive constraint expressions
 - **Hierarchical cell structure**: Build complex layouts from reusable cell components
 - **Two programming models**:
@@ -14,6 +15,12 @@ A Python library for constraint-based hierarchical layout automation using SciPy
 - **Automatic constraint solving**: Uses SciPy optimization (SLSQP method) to satisfy all constraints
 - **Visualization**: Built-in matplotlib-based layout visualization
 - **GDS export/import**: Full support for GDS-II file format (gds_cell.py only)
+
+### Enhanced Features (NEW!)
+- **Design Rule Checking (DRC)**: Validate layouts against spacing, width, area, overlap, and enclosure rules
+- **Symmetry constraints**: Automatic symmetric placement for differential pairs and analog circuits
+- **Constraint debugging**: Visualize and diagnose constraint satisfaction/violations
+- **Array generators**: Quickly create 1D/2D arrays, grids, and symmetric pairs with automatic constraints
 
 ## Installation
 
@@ -296,6 +303,192 @@ top.solver()
 top.export_gds('design.gds')
 ```
 
+## Enhanced Features Guide
+
+### Design Rule Checking (DRC)
+
+Validate your layouts against design rules to catch spacing, width, and overlap violations:
+
+```python
+from gds_cell import Cell, Polygon
+from drc import DRCChecker, create_default_rules
+
+# Create layout
+cell = Cell('my_layout')
+poly1 = Polygon('poly1', 'metal1')
+poly2 = Polygon('poly2', 'metal1')
+cell.add_polygon([poly1, poly2])
+cell.constrain(poly1, 'sx2+2<ox1', poly2)  # 2 unit spacing
+cell.solver()
+
+# Check design rules
+rules = create_default_rules()  # Or define custom rules
+checker = DRCChecker(rules)
+violations = checker.check_cell(cell)
+
+# Print violations
+checker.print_violations()
+```
+
+Create custom rule sets:
+
+```python
+from drc import DRCRuleSet
+
+rules = DRCRuleSet("my_technology")
+rules.add_spacing_rule('metal1', 'metal1', 3.0)
+rules.add_width_rule('metal1', 2.0)
+rules.add_area_rule('metal1', 20.0)
+rules.add_overlap_rule('metal1', 'via', 1.0)
+rules.add_enclosure_rule('metal1', 'via', 1.5)
+```
+
+### Symmetry Constraints
+
+Create symmetric layouts critical for analog IC design:
+
+```python
+from gds_cell import Cell, CellInstance
+
+# Create base cell
+base_cell = Cell('transistor')
+# ... add polygons ...
+
+# Create symmetric pair
+top = Cell('diff_pair')
+left = CellInstance('left', base_cell)
+right = CellInstance('right', base_cell)
+top.add_instance([left, right])
+
+# Apply symmetry (vertical axis - mirrored left-right)
+top.add_symmetry(left, right, axis='y')
+
+# Or horizontal symmetry (mirrored top-bottom)
+top.add_symmetry(left, right, axis='x')
+
+# With fixed axis position
+top.add_symmetry(left, right, axis='y', axis_position=100.0)
+```
+
+### Constraint Debugging
+
+Visualize and diagnose constraint issues:
+
+```python
+from constraint_debug import ConstraintDebugger, create_constraint_report
+
+# Create and solve layout
+cell = Cell('complex_layout')
+# ... add elements and constraints ...
+cell.solver()
+
+# Debug constraints
+debugger = ConstraintDebugger(cell)
+status = debugger.check_constraints()
+
+# Print constraint satisfaction status
+debugger.print_constraint_status(show_satisfied=True)
+
+# Visualize constraints on layout
+debugger.visualize_constraints()
+
+# Get diagnostics for infeasible systems
+diagnostics = debugger.diagnose_infeasible()
+for msg in diagnostics:
+    print(msg)
+
+# Create comprehensive report
+create_constraint_report(cell, 'my_report.txt')
+```
+
+### Array Generators
+
+Quickly create arrays with automatic constraint generation:
+
+```python
+from gds_cell import Cell
+from array_gen import ArrayGenerator, create_row, create_grid
+
+# Create unit cell
+unit = Cell('unit')
+# ... add polygons ...
+
+# Method 1: Use convenience functions
+top = Cell('top')
+instances = create_row(top, unit, count=5, spacing=10.0)
+
+# Method 2: Use ArrayGenerator for more options
+gen = ArrayGenerator()
+
+# 1D horizontal array
+instances = gen.create_1d_array(top, unit, count=5, spacing=10.0, direction='horizontal')
+
+# 1D vertical array (column)
+instances = gen.create_1d_array(top, unit, count=5, spacing=10.0, direction='vertical')
+
+# 2D grid
+grid = gen.create_2d_array(top, unit, rows=3, cols=4, spacing_x=12.0, spacing_y=10.0)
+
+# Symmetric pair
+inst1, inst2 = gen.create_symmetric_pair(top, unit, axis='y', spacing=15.0)
+
+# Interleaved array (alternating cell types)
+cell_a = Cell('type_a')
+cell_b = Cell('type_b')
+insts_a, insts_b = gen.create_interleaved_array(
+    top, cell_a, cell_b, count=8, spacing=6.0, direction='horizontal'
+)
+
+# Ring arrangement
+instances = gen.create_ring_array(top, unit, count=12, radius=50.0)
+```
+
+### Complete Workflow Example
+
+Combining all enhanced features:
+
+```python
+from gds_cell import Cell, Polygon, CellInstance
+from drc import DRCChecker, create_default_rules
+from constraint_debug import ConstraintDebugger
+from array_gen import create_grid
+
+# 1. Create base cell
+unit = Cell('unit')
+poly = Polygon('poly', 'poly')
+metal = Polygon('metal', 'metal1')
+unit.add_polygon([poly, metal])
+unit.constrain(poly, 'sx2+2<ox1', metal)
+
+# 2. Create array
+top = Cell('chip')
+grid = create_grid(top, unit, rows=4, cols=6, spacing_x=15.0, spacing_y=12.0)
+
+# 3. Solve
+if not top.solver():
+    print("Solver failed!")
+    # Debug constraints
+    debugger = ConstraintDebugger(top)
+    debugger.print_diagnostics()
+    exit(1)
+
+# 4. Check design rules
+rules = create_default_rules()
+checker = DRCChecker(rules)
+violations = checker.check_cell(top)
+if violations:
+    checker.print_violations()
+
+# 5. Verify constraints
+debugger = ConstraintDebugger(top)
+debugger.check_constraints()
+debugger.print_constraint_status()
+
+# 6. Export
+top.draw()
+top.export_gds('chip.gds')
+```
+
 ## Testing
 
 Run the included test files:
@@ -303,6 +496,8 @@ Run the included test files:
 ```bash
 python test_cell.py
 python test_gds_cell.py
+python test_new_features.py  # Test enhanced features
+python test_hierarchy_validation.py
 ```
 
 ## Implementation Notes

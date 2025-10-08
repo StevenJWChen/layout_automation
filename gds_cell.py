@@ -165,6 +165,63 @@ class Cell:
         """
         self.constraints.append((obj1, constraint_str, obj2))
 
+    def add_symmetry(self, obj1: Union[Polygon, CellInstance],
+                    obj2: Union[Polygon, CellInstance],
+                    axis: str = 'y',
+                    axis_position: Optional[float] = None):
+        """
+        Add symmetry constraint between two objects
+
+        Args:
+            obj1: First object
+            obj2: Second object (symmetric to first)
+            axis: 'x' for horizontal symmetry, 'y' for vertical symmetry
+            axis_position: Optional fixed axis position. If None, axis will be placed
+                          at midpoint between objects
+
+        Example:
+            # Vertical symmetry (mirrored left-right across vertical axis)
+            cell.add_symmetry(inst1, inst2, axis='y')
+
+            # Horizontal symmetry (mirrored top-bottom across horizontal axis)
+            cell.add_symmetry(inst1, inst2, axis='x')
+        """
+        if axis == 'y':
+            # Vertical axis - objects mirrored left-right
+            if axis_position is not None:
+                # Fixed axis: obj1.x2 and obj2.x1 equidistant from axis
+                # axis - sx2 = ox1 - axis  =>  2*axis = sx2 + ox1
+                self.constrain(obj1, f'sx2+ox1={2*axis_position}', obj2)
+            else:
+                # Floating axis: obj1 and obj2 equidistant from midpoint
+                # (sx1+sx2)/2 + (ox1+ox2)/2 = 2*axis  (midpoint constraint)
+                # sx2 + gap = ox1  (adjacent constraint)
+                self.constrain(obj1, 'sx2<ox1', obj2)  # Ensure spacing
+                self.constrain(obj1, '(sx1+sx2)/2 = -(ox1+ox2)/2', obj2)  # Midpoint
+
+            # Same y-positions (aligned vertically)
+            self.constrain(obj1, 'sy1=oy1, sy2=oy2', obj2)
+
+            # Same width
+            self.constrain(obj1, 'sx2-sx1=ox2-ox1', obj2)
+
+        elif axis == 'x':
+            # Horizontal axis - objects mirrored top-bottom
+            if axis_position is not None:
+                # Fixed axis: obj1.y2 and obj2.y1 equidistant from axis
+                self.constrain(obj1, f'sy2+oy1={2*axis_position}', obj2)
+            else:
+                # Floating axis
+                self.constrain(obj1, 'sy2<oy1', obj2)  # Ensure spacing
+
+            # Same x-positions (aligned horizontally)
+            self.constrain(obj1, 'sx1=ox1, sx2=ox2', obj2)
+
+            # Same height
+            self.constrain(obj1, 'sy2-sy1=oy2-oy1', obj2)
+        else:
+            raise ValueError(f"Invalid axis '{axis}'. Must be 'x' or 'y'")
+
     def _parse_constraint(self, constraint_str: str,
                          obj1: Union[Polygon, CellInstance],
                          obj2: Union[Polygon, CellInstance],
