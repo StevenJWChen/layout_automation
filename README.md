@@ -2,6 +2,8 @@
 
 A Python library for constraint-based hierarchical layout automation using SciPy optimization. Define spatial relationships between layout elements using simple constraint expressions, and let the solver automatically compute optimal positions.
 
+⚠️ **IMPORTANT**: This tool provides constraint solving and layout automation. Users are responsible for providing correct constraints and validating results for physical/electrical correctness. See [TOOL_VALIDATION.md](TOOL_VALIDATION.md) for details.
+
 ## Features
 
 - **Constraint-based positioning**: Define spatial relationships using intuitive constraint expressions
