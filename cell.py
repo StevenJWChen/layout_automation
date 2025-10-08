@@ -72,14 +72,14 @@ class Cell:
         else:
             raise TypeError("Argument must be Cell instance or list of Cell instances")
 
-    def constrain(self, cell1: 'Cell', constraint_str: str, cell2: 'Cell'):
+    def constrain(self, cell1: 'Cell', constraint_str: str, cell2: 'Cell' = None):
         """
-        Add constraint between two cells
+        Add constraint between two cells or absolute constraint on one cell
 
         Args:
-            cell1: First cell (uses 's' prefix in constraint string)
-            cell2: Second cell (uses 'o' prefix in constraint string)
-            constraint_str: Constraint string, e.g., 'sx1<ox2+3, sy2+5<oy1'
+            cell1: First cell (uses 's' or 'x' prefix in constraint string)
+            cell2: Second cell (uses 'o' prefix). If None, uses absolute constraint
+            constraint_str: Constraint string, e.g., 'sx1<ox2+3' or 'x2-x1=10'
         """
         self.constraints.append((cell1, constraint_str, cell2))
 
@@ -108,26 +108,34 @@ class Cell:
         Parse constraint string into constraint tuples for optimization
 
         Args:
-            constraint_str: Constraint string like 'sx1<ox2+3, sy2+5<oy1'
-            cell1: Cell mapped to 's' prefix
-            cell2: Cell mapped to 'o' prefix
+            constraint_str: Constraint string like 'sx1<ox2+3' or 'x2-x1=10'
+            cell1: Cell mapped to 's' or 'x' prefix
+            cell2: Cell mapped to 'o' prefix (or None for absolute constraints)
             var_counter: Variable counter dictionary
 
         Returns:
-            List of constraint tuples (operator, left_expr, right_expr, type)
-            where type is 'ineq' for inequalities or 'eq' for equality
+            List of constraint tuples (operator, left_expr, right_expr, var_map)
         """
         parsed_constraints = []
 
-        # Get variable indices for both cells
+        # Get variable indices for first cell
         s_vars = cell1._get_var_indices(var_counter)
-        o_vars = cell2._get_var_indices(var_counter)
 
         # Map variable names to indices
-        var_map = {
-            'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3],
-            'ox1': o_vars[0], 'oy1': o_vars[1], 'ox2': o_vars[2], 'oy2': o_vars[3]
-        }
+        if cell2 is None:
+            # Absolute constraint - use 'x' prefix for single cell
+            var_map = {
+                'x1': s_vars[0], 'y1': s_vars[1], 'x2': s_vars[2], 'y2': s_vars[3],
+                # Also support 's' prefix for backwards compatibility
+                'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3]
+            }
+        else:
+            # Relative constraint between two cells
+            o_vars = cell2._get_var_indices(var_counter)
+            var_map = {
+                'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3],
+                'ox1': o_vars[0], 'oy1': o_vars[1], 'ox2': o_vars[2], 'oy2': o_vars[3]
+            }
 
         # Split by comma to get individual constraints
         constraints = [c.strip() for c in constraint_str.split(',')]
@@ -169,8 +177,8 @@ class Cell:
         coeffs = np.zeros(n_vars)
         constant = 0.0
 
-        # Tokenize the expression
-        tokens = re.findall(r'[so][xy][12]|\d+\.?\d*|[+\-*/()]', expr_str)
+        # Tokenize the expression - match variable patterns: x1, y2, sx1, oy2, etc.
+        tokens = re.findall(r'[soxy][xy]?[12]|\d+\.?\d*|[+\-*/()]', expr_str)
 
         # Parse tokens to build coefficients
         i = 0

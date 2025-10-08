@@ -154,14 +154,14 @@ class Cell:
 
     def constrain(self, obj1: Union[Polygon, CellInstance],
                   constraint_str: str,
-                  obj2: Union[Polygon, CellInstance]):
+                  obj2: Union[Polygon, CellInstance] = None):
         """
-        Add constraint between two objects (polygons or instances)
+        Add constraint between two objects or absolute constraint on one object
 
         Args:
-            obj1: First object (uses 's' prefix in constraint string)
-            obj2: Second object (uses 'o' prefix in constraint string)
-            constraint_str: Constraint string, e.g., 'sx1<ox2+3, sy2+5<oy1'
+            obj1: First object (uses 's' or 'x' prefix in constraint string)
+            constraint_str: Constraint string, e.g., 'sx1<ox2+3' or 'x2-x1=10'
+            obj2: Second object (uses 'o' prefix). If None, uses absolute constraint
         """
         self.constraints.append((obj1, constraint_str, obj2))
 
@@ -172,15 +172,24 @@ class Cell:
         """Parse constraint string into constraint tuples for optimization"""
         parsed_constraints = []
 
-        # Get variable indices for both objects
+        # Get variable indices for first object
         s_vars = obj1._get_var_indices(var_counter)
-        o_vars = obj2._get_var_indices(var_counter)
 
         # Map variable names to indices
-        var_map = {
-            'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3],
-            'ox1': o_vars[0], 'oy1': o_vars[1], 'ox2': o_vars[2], 'oy2': o_vars[3]
-        }
+        if obj2 is None:
+            # Absolute constraint - use 'x' prefix for single object
+            var_map = {
+                'x1': s_vars[0], 'y1': s_vars[1], 'x2': s_vars[2], 'y2': s_vars[3],
+                # Also support 's' prefix for backwards compatibility
+                'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3]
+            }
+        else:
+            # Relative constraint between two objects
+            o_vars = obj2._get_var_indices(var_counter)
+            var_map = {
+                'sx1': s_vars[0], 'sy1': s_vars[1], 'sx2': s_vars[2], 'sy2': s_vars[3],
+                'ox1': o_vars[0], 'oy1': o_vars[1], 'ox2': o_vars[2], 'oy2': o_vars[3]
+            }
 
         # Split by comma to get individual constraints
         constraints = [c.strip() for c in constraint_str.split(',')]
@@ -211,7 +220,8 @@ class Cell:
         coeffs = np.zeros(n_vars)
         constant = 0.0
 
-        tokens = re.findall(r'[so][xy][12]|\d+\.?\d*|[+\-*/()]', expr_str)
+        # Match variable patterns: x1, y2, sx1, oy2, etc.
+        tokens = re.findall(r'[soxy][xy]?[12]|\d+\.?\d*|[+\-*/()]', expr_str)
 
         i = 0
         sign = 1.0
