@@ -158,7 +158,7 @@ class Cell:
         Parse an arithmetic expression string into coefficient vector for linear optimization
 
         Args:
-            expr_str: Expression string like 'sx1+5' or 'ox2*2-3'
+            expr_str: Expression string like 'sx1+5' or 'ox2*2-3' or 'sx2-sx1'
             var_map: Mapping of variable names to indices
             n_vars: Total number of variables
 
@@ -173,50 +173,61 @@ class Cell:
         tokens = re.findall(r'[so][xy][12]|\d+\.?\d*|[+\-*/()]', expr_str)
 
         # Parse tokens to build coefficients
-        # Simple parsing: handles var, const, var+const, var-const, const*var, etc.
         i = 0
         sign = 1.0
+        pending_coefficient = None
 
         while i < len(tokens):
             token = tokens[i]
 
             if token == '+':
                 sign = 1.0
+                pending_coefficient = None
             elif token == '-':
                 sign = -1.0
+                pending_coefficient = None
             elif token == '*':
-                # Skip multiplication operator, handled implicitly
+                # Multiplication operator, just skip
                 pass
             elif token in var_map:
-                # Variable token
+                # Variable found
                 var_idx = var_map[token]
                 coeff = sign
 
-                # Check if preceded by a number (multiplication)
-                if i > 0 and tokens[i-1] not in ['+', '-', '*'] and re.match(r'\d+\.?\d*', tokens[i-1]):
-                    coeff *= float(tokens[i-1])
+                # Check for pending coefficient (number before variable)
+                if pending_coefficient is not None:
+                    coeff *= pending_coefficient
+                    pending_coefficient = None
 
-                # Check if followed by * and number
-                if i + 2 < len(tokens) and tokens[i+1] == '*':
+                # Check for coefficient after variable (e.g., var*2)
+                if i + 2 < len(tokens) and tokens[i+1] == '*' and re.match(r'\d+\.?\d*', tokens[i+2]):
                     coeff *= float(tokens[i+2])
 
                 coeffs[var_idx] += coeff
-                sign = 1.0  # Reset sign
+                sign = 1.0  # Reset sign after processing variable
             elif re.match(r'\d+\.?\d*', token):
-                # Number token - could be coefficient or constant
+                # Number found
                 num = float(token)
 
-                # Check if followed by variable
-                if i + 1 < len(tokens) and tokens[i+1] in var_map:
-                    # It's a coefficient, handled when we see the variable
-                    pass
-                elif i + 1 < len(tokens) and tokens[i+1] == '*':
-                    # Multiplication, handled when we see the variable
-                    pass
+                # Check if this number is followed by a variable or *
+                if i + 1 < len(tokens):
+                    next_token = tokens[i+1]
+                    if next_token in var_map:
+                        # This number is a coefficient for the next variable
+                        pending_coefficient = num
+                    elif next_token == '*':
+                        # Number followed by *, could be num*var
+                        pending_coefficient = num
+                    else:
+                        # Standalone constant
+                        constant += sign * num
+                        sign = 1.0
+                        pending_coefficient = None
                 else:
-                    # It's a constant
+                    # Last token is a number - it's a constant
                     constant += sign * num
                     sign = 1.0
+                    pending_coefficient = None
 
             i += 1
 

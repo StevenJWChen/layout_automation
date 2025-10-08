@@ -215,38 +215,59 @@ class Cell:
 
         i = 0
         sign = 1.0
+        pending_coefficient = None
 
         while i < len(tokens):
             token = tokens[i]
 
             if token == '+':
                 sign = 1.0
+                pending_coefficient = None
             elif token == '-':
                 sign = -1.0
+                pending_coefficient = None
             elif token == '*':
+                # Multiplication operator, just skip
                 pass
             elif token in var_map:
+                # Variable found
                 var_idx = var_map[token]
                 coeff = sign
 
-                if i > 0 and tokens[i-1] not in ['+', '-', '*'] and re.match(r'\d+\.?\d*', tokens[i-1]):
-                    coeff *= float(tokens[i-1])
+                # Check for pending coefficient (number before variable)
+                if pending_coefficient is not None:
+                    coeff *= pending_coefficient
+                    pending_coefficient = None
 
-                if i + 2 < len(tokens) and tokens[i+1] == '*':
+                # Check for coefficient after variable (e.g., var*2)
+                if i + 2 < len(tokens) and tokens[i+1] == '*' and re.match(r'\d+\.?\d*', tokens[i+2]):
                     coeff *= float(tokens[i+2])
 
                 coeffs[var_idx] += coeff
-                sign = 1.0
+                sign = 1.0  # Reset sign after processing variable
             elif re.match(r'\d+\.?\d*', token):
+                # Number found
                 num = float(token)
 
-                if i + 1 < len(tokens) and tokens[i+1] in var_map:
-                    pass
-                elif i + 1 < len(tokens) and tokens[i+1] == '*':
-                    pass
+                # Check if this number is followed by a variable or *
+                if i + 1 < len(tokens):
+                    next_token = tokens[i+1]
+                    if next_token in var_map:
+                        # This number is a coefficient for the next variable
+                        pending_coefficient = num
+                    elif next_token == '*':
+                        # Number followed by *, could be num*var
+                        pending_coefficient = num
+                    else:
+                        # Standalone constant
+                        constant += sign * num
+                        sign = 1.0
+                        pending_coefficient = None
                 else:
+                    # Last token is a number - it's a constant
                     constant += sign * num
                     sign = 1.0
+                    pending_coefficient = None
 
             i += 1
 
