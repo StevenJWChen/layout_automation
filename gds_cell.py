@@ -565,8 +565,8 @@ class Cell:
 
         return fig
 
-    def _draw_recursive(self, ax, level: int = 0):
-        """Recursively draw all polygons and instances"""
+    def _draw_recursive(self, ax, level: int = 0, offset_x: float = 0, offset_y: float = 0):
+        """Recursively draw all polygons and instances with coordinate transformation"""
         # Layer colors
         layer_colors = {
             'metal1': 'blue',
@@ -577,39 +577,45 @@ class Cell:
             'diff': 'brown',
         }
 
-        # Draw polygons in this cell
+        # Draw polygons in this cell (with offset for instances)
         for poly in self.polygons:
             if all(v is not None for v in poly.pos_list):
                 x1, y1, x2, y2 = poly.pos_list
-                width = x2 - x1
-                height = y2 - y1
+                # Apply offset transformation
+                x1_trans = x1 + offset_x
+                y1_trans = y1 + offset_y
+                x2_trans = x2 + offset_x
+                y2_trans = y2 + offset_y
+
+                width = x2_trans - x1_trans
+                height = y2_trans - y1_trans
 
                 color = layer_colors.get(poly.layer, 'gray')
 
                 rect = patches.Rectangle(
-                    (x1, y1), width, height,
+                    (x1_trans, y1_trans), width, height,
                     linewidth=2, edgecolor='black', facecolor=color, alpha=0.6
                 )
                 ax.add_patch(rect)
 
                 # Add label
-                cx = (x1 + x2) / 2
-                cy = (y1 + y2) / 2
+                cx = (x1_trans + x2_trans) / 2
+                cy = (y1_trans + y2_trans) / 2
                 label = f"{poly.name}\n({poly.layer})"
-                ax.text(cx, cy, label, ha='center', va='center', fontsize=8, weight='bold')
+                ax.text(cx, cy, label, ha='center', va='center', fontsize=6, weight='bold')
 
         # Draw instances - show bounds with dashed lines
         for instance in self.instances:
             if all(v is not None for v in instance.pos_list):
-                x1, y1, x2, y2 = instance.pos_list
-                width = x2 - x1
-                height = y2 - y1
+                inst_x1, inst_y1, inst_x2, inst_y2 = instance.pos_list
+                width = inst_x2 - inst_x1
+                height = inst_y2 - inst_y1
 
                 colors = ['darkblue', 'darkred', 'darkgreen', 'darkorange', 'darkviolet']
                 edge_color = colors[level % len(colors)]
 
                 rect = patches.Rectangle(
-                    (x1, y1), width, height,
+                    (inst_x1 + offset_x, inst_y1 + offset_y), width, height,
                     linewidth=2, edgecolor=edge_color, facecolor='none',
                     linestyle='--', alpha=0.8
                 )
@@ -617,11 +623,26 @@ class Cell:
 
                 # Add label
                 label = f"{instance.name}\n[{instance.cell.name}]"
-                ax.text(x1, y2 + 1, label, ha='left', va='bottom', fontsize=9,
+                ax.text(inst_x1 + offset_x, inst_y2 + offset_y + 1, label,
+                       ha='left', va='bottom', fontsize=9,
                        weight='bold', color=edge_color, style='italic')
 
-            # Recursively draw instance contents
-            instance.cell._draw_recursive(ax, level + 1)
+                # Calculate offset for instance's contents
+                # Get the cell's bounding box origin
+                if len(instance.cell.polygons) > 0:
+                    cell_x1 = min(p.pos_list[0] for p in instance.cell.polygons if p.pos_list[0] is not None)
+                    cell_y1 = min(p.pos_list[1] for p in instance.cell.polygons if p.pos_list[1] is not None)
+
+                    # Transform: place cell origin at instance position
+                    child_offset_x = inst_x1 + offset_x - cell_x1
+                    child_offset_y = inst_y1 + offset_y - cell_y1
+                else:
+                    # No polygons, use instance position directly
+                    child_offset_x = inst_x1 + offset_x
+                    child_offset_y = inst_y1 + offset_y
+
+                # Recursively draw instance contents with transformation
+                instance.cell._draw_recursive(ax, level + 1, child_offset_x, child_offset_y)
 
     def copy(self) -> 'Cell':
         """Create a deep copy of this cell"""
