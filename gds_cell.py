@@ -468,20 +468,32 @@ class Cell:
                     A = left_coeffs - right_coeffs
                     b = right_const - left_const
 
+                    # For constraints: left_expr OP right_expr
+                    # We compute: A*x + b OP 0
+                    # Where A = left_coeffs - right_coeffs, b = right_const - left_const
+                    # This gives: (left_expr) - (right_expr) + (right_const - left_const) OP 0
+                    # Simplifying: left_expr - right_expr + right_const - left_const OP 0
+                    # Which is: left_expr + (-left_const) - right_expr - (-right_const) OP 0
+                    # Actually: left_expr - right_expr OP right_const - left_const
+                    # So the formulation should be: A*x OP -b for the constraint to work
+
                     if operator in ['<', '<=']:
+                        # left < right  =>  left - right < 0  =>  -(left - right) > 0
                         inequality_constraints.append({
                             'type': 'ineq',
                             'fun': lambda x, A=A, b=b: -np.dot(A, x) - b
                         })
                     elif operator in ['>', '>=']:
+                        # left > right  =>  left - right > 0
                         inequality_constraints.append({
                             'type': 'ineq',
                             'fun': lambda x, A=A, b=b: np.dot(A, x) + b
                         })
                     elif operator == '=':
+                        # left = right  =>  left - right = 0  =>  A*x - b = 0
                         equality_constraints.append({
                             'type': 'eq',
-                            'fun': lambda x, A=A, b=b: np.dot(A, x) + b
+                            'fun': lambda x, A=A, b=b: np.dot(A, x) - b
                         })
 
         # Initial guess
