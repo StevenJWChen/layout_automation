@@ -8,6 +8,7 @@ A Python library for constraint-based hierarchical layout automation using SciPy
 
 ### Core Features
 - **Constraint-based positioning**: Define spatial relationships using intuitive constraint expressions
+- **Integer positions**: All coordinates are integers by default (critical for IC manufacturing grids)
 - **Hierarchical cell structure**: Build complex layouts from reusable cell components
 - **Two programming models**:
   - `cell.py`: Simplified hierarchical cell model with layer-based leaf cells
@@ -69,6 +70,9 @@ tt_inst.constrain(t_inst1, 'sx2+5<ox1', t_inst2)
 
 # Solve and visualize
 tt_inst.draw()  # Automatically solves constraints and displays layout
+
+# All positions are integers by default
+# To use float positions: tt_inst.solver(integer_positions=False)
 ```
 
 ### Using gds_cell.py (GDS-II Compatible Model)
@@ -97,6 +101,9 @@ top_cell.constrain(inst1, 'sx2+5<ox1', inst2)
 # Solve and export to GDS
 top_cell.draw()
 top_cell.export_gds('output.gds')
+
+# Integer positions by default ensure alignment to manufacturing grid
+# For float positions: top_cell.solver(integer_positions=False)
 ```
 
 ## Constraint Syntax

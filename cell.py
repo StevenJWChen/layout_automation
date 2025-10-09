@@ -241,12 +241,13 @@ class Cell:
 
         return coeffs, constant
 
-    def solver(self, fix_leaf_positions: bool = True) -> bool:
+    def solver(self, fix_leaf_positions: bool = True, integer_positions: bool = True) -> bool:
         """
         Solve constraints to determine cell positions using SciPy optimization
 
         Args:
             fix_leaf_positions: If True, assigns default positions to leaf cells
+            integer_positions: If True, rounds all positions to integers
 
         Returns:
             True if solution found, False otherwise
@@ -343,15 +344,29 @@ class Cell:
                          options={'maxiter': 1000, 'ftol': 1e-6})
 
         if result.success:
+            # Round to integers if requested
+            if integer_positions:
+                solution = np.round(result.x).astype(int)
+            else:
+                solution = result.x
+
             # Extract solutions
             for cell in all_cells:
                 x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
-                cell.pos_list = [
-                    float(result.x[x1_idx]),
-                    float(result.x[y1_idx]),
-                    float(result.x[x2_idx]),
-                    float(result.x[y2_idx])
-                ]
+                if integer_positions:
+                    cell.pos_list = [
+                        int(solution[x1_idx]),
+                        int(solution[y1_idx]),
+                        int(solution[x2_idx]),
+                        int(solution[y2_idx])
+                    ]
+                else:
+                    cell.pos_list = [
+                        float(solution[x1_idx]),
+                        float(solution[y1_idx]),
+                        float(solution[x2_idx]),
+                        float(solution[y2_idx])
+                    ]
 
             # Update parent bounds to tightly fit children
             self._update_parent_bounds()

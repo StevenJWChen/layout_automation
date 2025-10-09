@@ -364,12 +364,13 @@ class Cell:
 
         return all_polygons, all_instances, all_cells
 
-    def solver(self, fix_polygon_size: bool = True) -> bool:
+    def solver(self, fix_polygon_size: bool = True, integer_positions: bool = True) -> bool:
         """
         Solve constraints to determine positions using SciPy optimization
 
         Args:
             fix_polygon_size: If True, assigns default sizes to polygons
+            integer_positions: If True, rounds all positions to integers
 
         Returns:
             True if solution found, False otherwise
@@ -535,25 +536,47 @@ class Cell:
                          options={'maxiter': 1000, 'ftol': 1e-6})
 
         if result.success:
+            # Round to integers if requested
+            if integer_positions:
+                solution = np.round(result.x).astype(int)
+            else:
+                solution = result.x
+
             # Extract solutions for polygons
             for poly in all_polygons:
                 x1_idx, y1_idx, x2_idx, y2_idx = poly._get_var_indices(var_counter)
-                poly.pos_list = [
-                    float(result.x[x1_idx]),
-                    float(result.x[y1_idx]),
-                    float(result.x[x2_idx]),
-                    float(result.x[y2_idx])
-                ]
+                if integer_positions:
+                    poly.pos_list = [
+                        int(solution[x1_idx]),
+                        int(solution[y1_idx]),
+                        int(solution[x2_idx]),
+                        int(solution[y2_idx])
+                    ]
+                else:
+                    poly.pos_list = [
+                        float(solution[x1_idx]),
+                        float(solution[y1_idx]),
+                        float(solution[x2_idx]),
+                        float(solution[y2_idx])
+                    ]
 
             # Extract solutions for instances
             for inst in all_instances:
                 x1_idx, y1_idx, x2_idx, y2_idx = inst._get_var_indices(var_counter)
-                inst.pos_list = [
-                    float(result.x[x1_idx]),
-                    float(result.x[y1_idx]),
-                    float(result.x[x2_idx]),
-                    float(result.x[y2_idx])
-                ]
+                if integer_positions:
+                    inst.pos_list = [
+                        int(solution[x1_idx]),
+                        int(solution[y1_idx]),
+                        int(solution[x2_idx]),
+                        int(solution[y2_idx])
+                    ]
+                else:
+                    inst.pos_list = [
+                        float(solution[x1_idx]),
+                        float(solution[y1_idx]),
+                        float(solution[x2_idx]),
+                        float(solution[y2_idx])
+                    ]
 
             # Update instance bounds to match their cell contents
             self._update_instance_bounds()
