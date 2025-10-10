@@ -14,6 +14,7 @@ import matplotlib.patches as patches
 from scipy.optimize import linprog, minimize
 import numpy as np
 import gdstk
+from integer_optimizer import smart_integer_rounding
 
 
 class Polygon:
@@ -538,7 +539,13 @@ class Cell:
         if result.success:
             # Round to integers if requested
             if integer_positions:
-                solution = np.round(result.x).astype(int)
+                # Use smart rounding that verifies constraints
+                solution, success, message = smart_integer_rounding(
+                    result.x, all_constraints, verbose=False
+                )
+                if not success:
+                    print(f"Warning: {message}")
+                    print("  Some constraints may be slightly violated after integer rounding")
             else:
                 solution = result.x
 
