@@ -23,6 +23,14 @@ A Python library for constraint-based hierarchical layout automation using SciPy
 - **Constraint debugging**: Visualize and diagnose constraint satisfaction/violations
 - **Array generators**: Quickly create 1D/2D arrays, grids, and symmetric pairs with automatic constraints
 
+### Professional IC Design Features (LATEST!)
+- **Unit system**: Full micron/nanometer support with `um()` and `nm()` functions
+- **Technology files**: Process-specific layer definitions (SkyWater SKY130 included)
+- **Contact/Via generation**: Automatic contact generation between layers with enclosure rules
+- **MOSFET primitives**: Parametric transistor cells (PCells) with configurable W, L, fingers
+- **Standard cell support**: Generate SkyWater-compatible standard cells
+- **Layer stack**: Wells, implants, contacts, local interconnect, and metal layers
+
 ## Installation
 
 ### Requirements
@@ -105,6 +113,35 @@ top_cell.export_gds('output.gds')
 # Integer positions by default ensure alignment to manufacturing grid
 # For float positions: top_cell.solver(integer_positions=False)
 ```
+
+### Professional IC Design Workflow
+
+```python
+from technology import create_sky130_tech
+from mosfet import MOSFET
+from contact import Contact
+from units import um, nm
+
+# Create technology
+tech = create_sky130_tech()
+
+# Create NMOS transistor (W=0.65um, L=0.15um)
+nmos = MOSFET('M1', 'nfet', width=um(0.65), length=um(0.15), technology=tech)
+cell = nmos.generate()
+
+# Get terminal positions
+terminals = nmos.get_terminals()
+print(f"Gate: {terminals['gate']}, Drain: {terminals['drain']}")
+
+# Create contacts
+contact = Contact('cont1', 'diff', 'li1', (um(1), um(1)), tech)
+contact.generate(cell)
+
+# Export to GDS with correct SkyWater layers
+cell.export_gds('nmos.gds')
+```
+
+See [replicate_skywater_inv.py](replicate_skywater_inv.py) for a complete inverter example!
 
 ## Constraint Syntax
 
@@ -496,6 +533,103 @@ top.draw()
 top.export_gds('chip.gds')
 ```
 
+## Professional IC Design Modules
+
+### Unit System (`units.py`)
+
+Convert between microns, nanometers, and database units:
+
+```python
+from units import um, nm, to_um
+
+# Convert to database units (integers in nanometers)
+width = um(0.65)   # 0.65 microns → 650 nm
+length = nm(150)   # 150 nm → 150 nm
+
+# Convert back to microns
+microns = to_um(650)  # 650 nm → 0.65 um
+```
+
+### Technology Files (`technology.py`)
+
+Define process-specific layers and design rules:
+
+```python
+from technology import Technology, create_sky130_tech
+
+# Use pre-configured SkyWater SKY130
+tech = create_sky130_tech()
+
+# Get GDS layer numbers
+poly_layer = tech.get_gds_layer('poly')  # Returns (66, 20)
+met1_layer = tech.get_gds_layer('met1')  # Returns (68, 20)
+
+# Access design rules
+min_width = tech.min_width['poly']     # 150 nm
+min_spacing = tech.min_spacing['poly']  # 210 nm
+
+# Create custom technology
+custom_tech = Technology('tsmc28')
+custom_tech.add_layer('metal1', gds_layer=10, gds_datatype=0)
+custom_tech.add_min_width('metal1', nm(100))
+```
+
+### Contact Generator (`contact.py`)
+
+Automatic contact/via generation with enclosure rules:
+
+```python
+from contact import Contact, ViaStack
+
+# Single contact (diff to li1)
+contact = Contact('cont1', 'diff', 'li1', position=(um(1), um(1)), technology=tech)
+contact.generate(cell)
+
+# Contact array (2x2)
+contact = Contact('cont2', 'li1', 'met1', position=(um(3), um(1)),
+                 technology=tech, rows=2, cols=2)
+contact.generate(cell)
+
+# Via stack (automatically creates all intermediate vias)
+stack = ViaStack('stack', 'met1', 'met3', position=(um(5), um(1)), technology=tech)
+stack.generate(cell)  # Creates via (met1→met2) + via2 (met2→met3)
+```
+
+### MOSFET Primitives (`mosfet.py`)
+
+Parametric transistor cells (PCells):
+
+```python
+from mosfet import MOSFET
+
+# Create NMOS (SkyWater inverter spec)
+nmos = MOSFET('M1', 'nfet', width=um(0.65), length=um(0.15),
+              technology=tech, fingers=1)
+cell = nmos.generate()
+
+# Multi-finger PMOS for higher current
+pmos = MOSFET('M2', 'pfet', width=um(2.0), length=um(0.15),
+              technology=tech, fingers=4)
+cell = pmos.generate()
+
+# Get terminal positions for routing
+terminals = nmos.get_terminals()
+gate_pos = terminals['gate']    # (x, y) in DBU
+drain_pos = terminals['drain']
+source_pos = terminals['source']
+```
+
+Automatically generates:
+- Active area (diff layer)
+- Polysilicon gates
+- Wells (nwell for PMOS, pwell for NMOS)
+- Implants (nsdm/psdm)
+- Source/drain contacts
+
+### Standard Cell Replication
+
+See `replicate_skywater_inv.py` for complete example of generating a SkyWater-compatible inverter.
+
 ## Testing
 
 Run the included test files:
@@ -505,6 +639,13 @@ python test_cell.py
 python test_gds_cell.py
 python test_new_features.py  # Test enhanced features
 python test_hierarchy_validation.py
+
+# Test professional IC design features
+python units.py              # Unit system demo
+python technology.py         # Technology file demo
+python contact.py            # Contact generator demo
+python mosfet.py             # MOSFET primitive demo
+python replicate_skywater_inv.py  # Full inverter replication
 ```
 
 ## Implementation Notes
