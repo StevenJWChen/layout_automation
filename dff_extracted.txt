@@ -1,0 +1,89 @@
+Extracted Netlist: DFF_layout_extracted
+======================================================================
+
+Total Devices: 16
+  NMOS: 8
+  PMOS: 8
+
+Device List:
+----------------------------------------------------------------------
+ 1. M0
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net16', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+ 2. M1
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net17', 'd': 'net1', 's': 'net1', 'b': 'VDD'}
+
+ 3. M2
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net18', 'd': 'net2', 's': 'net2', 'b': 'GND'}
+
+ 4. M3
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net19', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
+ 5. M4
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net20', 'd': 'net4', 's': 'net4', 'b': 'GND'}
+
+ 6. M5
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net21', 'd': 'net5', 's': 'net5', 'b': 'VDD'}
+
+ 7. M6
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net22', 'd': 'net6', 's': 'net6', 'b': 'GND'}
+
+ 8. M7
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net23', 'd': 'net7', 's': 'net7', 'b': 'VDD'}
+
+ 9. M8
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net24', 'd': 'net8', 's': 'net8', 'b': 'GND'}
+
+10. M9
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net25', 'd': 'net9', 's': 'net9', 'b': 'VDD'}
+
+11. M10
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net26', 'd': 'net10', 's': 'net10', 'b': 'GND'}
+
+12. M11
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net27', 'd': 'net11', 's': 'net11', 'b': 'VDD'}
+
+13. M12
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net28', 'd': 'net12', 's': 'net12', 'b': 'GND'}
+
+14. M13
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net29', 'd': 'net13', 's': 'net13', 'b': 'VDD'}
+
+15. M14
+    Type: nmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net30', 'd': 'net14', 's': 'net14', 'b': 'GND'}
+
+16. M15
+    Type: pmos
+    W=670nm, L=260nm
+    Terminals: {'g': 'net31', 'd': 'net15', 's': 'net15', 'b': 'VDD'}
+

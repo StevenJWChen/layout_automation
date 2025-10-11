@@ -1,0 +1,644 @@
+[
+  {
+    "gds_file": "and3_end_to_end.gds",
+    "cell_name": "AND3_schematic_layout",
+    "timestamp": "2025-10-11T08:53:12.857130",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 8,
+    "nmos_count": 4,
+    "pmos_count": 4,
+    "lvs_pass": false,
+    "lvs_violations": 18,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M1",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M2",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M4",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M5",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M6",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M7",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "contact_test.gds",
+    "cell_name": "contact_test",
+    "timestamp": "2025-10-11T08:53:12.858076",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "dff_test.gds",
+    "cell_name": "DFF_layout",
+    "timestamp": "2025-10-11T08:53:12.858287",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "hierarchy_validation.gds",
+    "cell_name": "visual",
+    "timestamp": "2025-10-11T08:53:12.858958",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "integer_test.gds",
+    "cell_name": "export_test",
+    "timestamp": "2025-10-11T08:53:12.859189",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "inverter_fixed_array.gds",
+    "cell_name": "inv_array_fixed",
+    "timestamp": "2025-10-11T08:53:12.859392",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "inverter_improved.gds",
+    "cell_name": "INVERTER_layout",
+    "timestamp": "2025-10-11T08:53:12.859634",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "inverter_simple_array.gds",
+    "cell_name": "inv_array",
+    "timestamp": "2025-10-11T08:53:12.859905",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "nmos_test.gds",
+    "cell_name": "NMOS1",
+    "timestamp": "2025-10-11T08:53:12.860145",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "pmos_test.gds",
+    "cell_name": "PMOS1",
+    "timestamp": "2025-10-11T08:53:12.860354",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "sky130_and3_replica.gds",
+    "cell_name": "sky130_fd_sc_hd__and3_1_replica",
+    "timestamp": "2025-10-11T08:53:12.861016",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 8,
+    "nmos_count": 4,
+    "pmos_count": 4,
+    "lvs_pass": false,
+    "lvs_violations": 9,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 4.2000000000000016e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M1",
+        "type": "nmos",
+        "W": 4.2e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M2",
+        "type": "nmos",
+        "W": 4.2e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 4.2e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M4",
+        "type": "pmos",
+        "W": 4.2e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M5",
+        "type": "pmos",
+        "W": 4.2e-07,
+        "L": 4.300000000000005e-07
+      },
+      {
+        "name": "M6",
+        "type": "nmos",
+        "W": 6.500000000000002e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M7",
+        "type": "pmos",
+        "W": 1.0000000000000002e-06,
+        "L": 4.3e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "sky130_and3_with_routing.gds",
+    "cell_name": "sky130_and3_routed",
+    "timestamp": "2025-10-11T08:53:12.861850",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 9,
+    "nmos_count": 4,
+    "pmos_count": 5,
+    "lvs_pass": false,
+    "lvs_violations": 10,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 4.2e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M1",
+        "type": "nmos",
+        "W": 4.199999999999998e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M2",
+        "type": "nmos",
+        "W": 4.200000000000005e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 4.2000000000000096e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M4",
+        "type": "pmos",
+        "W": 4.2000000000000096e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M5",
+        "type": "pmos",
+        "W": 4.2000000000000096e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M6",
+        "type": "nmos",
+        "W": 6.5e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M7",
+        "type": "pmos",
+        "W": 1.000000000000001e-06,
+        "L": 1.5000000000000002e-07
+      },
+      {
+        "name": "M8",
+        "type": "pmos",
+        "W": 1.000000000000001e-06,
+        "L": 4.3e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "sky130_inv_replica.gds",
+    "cell_name": "sky130_fd_sc_hd__inv_1_replica",
+    "timestamp": "2025-10-11T08:53:12.862589",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 2,
+    "nmos_count": 1,
+    "pmos_count": 1,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.500000000000002e-07,
+        "L": 4.3e-07
+      },
+      {
+        "name": "M1",
+        "type": "pmos",
+        "W": 1.0000000000000002e-06,
+        "L": 4.3e-07
+      }
+    ]
+  },
+  {
+    "gds_file": "test1_inverter.gds",
+    "cell_name": "INVERTER_layout",
+    "timestamp": "2025-10-11T08:53:12.862965",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 2,
+    "nmos_count": 1,
+    "pmos_count": 1,
+    "lvs_pass": false,
+    "lvs_violations": 4,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M1",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "test2_nand2_gate.gds",
+    "cell_name": "NAND2_layout",
+    "timestamp": "2025-10-11T08:53:12.863446",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 4,
+    "nmos_count": 2,
+    "pmos_count": 2,
+    "lvs_pass": false,
+    "lvs_violations": 8,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M1",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M2",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "test3_nor2_gate.gds",
+    "cell_name": "NOR2_layout",
+    "timestamp": "2025-10-11T08:53:12.863963",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 4,
+    "nmos_count": 2,
+    "pmos_count": 2,
+    "lvs_pass": false,
+    "lvs_violations": 8,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M1",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M2",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "test4_and3_gate.gds",
+    "cell_name": "AND3_layout",
+    "timestamp": "2025-10-11T08:53:12.864428",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 8,
+    "nmos_count": 4,
+    "pmos_count": 4,
+    "lvs_pass": false,
+    "lvs_violations": 18,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M1",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M2",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M4",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M5",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M6",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M7",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "test5_2-to-1_multiplexer.gds",
+    "cell_name": "MUX2to1_layout",
+    "timestamp": "2025-10-11T08:53:12.865221",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 8,
+    "nmos_count": 4,
+    "pmos_count": 4,
+    "lvs_pass": false,
+    "lvs_violations": 20,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M1",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M2",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M3",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M4",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M5",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M6",
+        "type": "nmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      },
+      {
+        "name": "M7",
+        "type": "pmos",
+        "W": 6.7e-07,
+        "L": 2.6e-07
+      }
+    ],
+    "lvs_note": "Net name mismatches expected (auto-schematic)"
+  },
+  {
+    "gds_file": "test_layout.gds",
+    "cell_name": "top_cell",
+    "timestamp": "2025-10-11T08:53:12.866050",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 0,
+    "nmos_count": 0,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": []
+  },
+  {
+    "gds_file": "test_nmos.gds",
+    "cell_name": "NMOS_test",
+    "timestamp": "2025-10-11T08:53:12.866306",
+    "drc_pass": true,
+    "drc_violations": 0,
+    "extraction_ok": true,
+    "extracted_devices": 1,
+    "nmos_count": 1,
+    "pmos_count": 0,
+    "lvs_pass": true,
+    "lvs_violations": 0,
+    "errors": [],
+    "devices": [
+      {
+        "name": "M0",
+        "type": "nmos",
+        "W": 6.5e-07,
+        "L": 4.3e-07
+      }
+    ]
+  }
+]

@@ -1,0 +1,25 @@
+======================================================================
+END-TO-END FLOW SUMMARY REPORT
+======================================================================
+
+Circuit: NOR2
+Technology: sky130
+
+LAYOUT:
+  Dimensions: 2.580 × 4.155 μm
+  Area: 10.720 μm²
+  Devices: 4
+
+DRC RESULTS:
+  ⚠️  72 errors, 4 warnings
+
+LVS RESULTS:
+  ❌ 10 errors, 14 warnings
+
+DEVICE COMPARISON:
+  Schematic devices: 4
+  Extracted devices: 12
+
+======================================================================
+❌ FLOW COMPLETED WITH LVS VIOLATIONS
+======================================================================

@@ -1,0 +1,125 @@
+Extracted Netlist: AND3_schematic_layout_extracted
+======================================================================
+
+Devices: 24
+
+M0:
+  Type: nmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net8', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+M1:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net8', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+M2:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net8', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+M3:
+  Type: nmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net9', 'd': 'net1', 's': 'net1', 'b': 'GND'}
+
+M4:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net9', 'd': 'net1', 's': 'net1', 'b': 'GND'}
+
+M5:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net9', 'd': 'net1', 's': 'net1', 'b': 'GND'}
+
+M6:
+  Type: nmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net10', 'd': 'net2', 's': 'net2', 'b': 'GND'}
+
+M7:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net10', 'd': 'net2', 's': 'net2', 'b': 'GND'}
+
+M8:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net10', 'd': 'net2', 's': 'net2', 'b': 'GND'}
+
+M9:
+  Type: pmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net11', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
+M10:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net11', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
+M11:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net11', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
+M12:
+  Type: pmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net12', 'd': 'net4', 's': 'net4', 'b': 'VDD'}
+
+M13:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net12', 'd': 'net4', 's': 'net4', 'b': 'VDD'}
+
+M14:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net12', 'd': 'net4', 's': 'net4', 'b': 'VDD'}
+
+M15:
+  Type: pmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net13', 'd': 'net5', 's': 'net5', 'b': 'VDD'}
+
+M16:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net13', 'd': 'net5', 's': 'net5', 'b': 'VDD'}
+
+M17:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net13', 'd': 'net5', 's': 'net5', 'b': 'VDD'}
+
+M18:
+  Type: nmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net14', 'd': 'net6', 's': 'net6', 'b': 'GND'}
+
+M19:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net14', 'd': 'net6', 's': 'net6', 'b': 'GND'}
+
+M20:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net14', 'd': 'net6', 's': 'net6', 'b': 'GND'}
+
+M21:
+  Type: pmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net15', 'd': 'net7', 's': 'net7', 'b': 'VDD'}
+
+M22:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net15', 'd': 'net7', 's': 'net7', 'b': 'VDD'}
+
+M23:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net15', 'd': 'net7', 's': 'net7', 'b': 'VDD'}
+

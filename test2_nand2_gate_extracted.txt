@@ -1,0 +1,65 @@
+Extracted Netlist: NAND2_layout_extracted
+======================================================================
+
+Devices: 12
+
+M0:
+  Type: nmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net4', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+M1:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net4', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+M2:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net4', 'd': 'net0', 's': 'net0', 'b': 'GND'}
+
+M3:
+  Type: nmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net5', 'd': 'net1', 's': 'net1', 'b': 'GND'}
+
+M4:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net5', 'd': 'net1', 's': 'net1', 'b': 'GND'}
+
+M5:
+  Type: nmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net5', 'd': 'net1', 's': 'net1', 'b': 'GND'}
+
+M6:
+  Type: pmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net6', 'd': 'net2', 's': 'net2', 'b': 'VDD'}
+
+M7:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net6', 'd': 'net2', 's': 'net2', 'b': 'VDD'}
+
+M8:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net6', 'd': 'net2', 's': 'net2', 'b': 'VDD'}
+
+M9:
+  Type: pmos
+  Parameters: {'W': 670, 'L': 260}
+  Terminals: {'g': 'net7', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
+M10:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net7', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
+M11:
+  Type: pmos
+  Parameters: {'W': 290, 'L': 260}
+  Terminals: {'g': 'net7', 'd': 'net3', 's': 'net3', 'b': 'VDD'}
+
