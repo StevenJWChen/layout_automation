@@ -1,0 +1,77 @@
+cell_name: NAND2_modified
+dimensions:
+  width: 0.23750000000000002
+  height: 0.23750000000000002
+polygons:
+- name: layer67_1
+  layer: layer67
+  layer_num: 67
+  datatype: 20
+  position:
+    x1: 0.022500000000000003
+    y1: 0.022500000000000003
+    x2: 0.0375
+    y2: 0.0375
+  size:
+    width: 0.014999999999999998
+    height: 0.014999999999999998
+- name: layer67_2
+  layer: layer67
+  layer_num: 67
+  datatype: 20
+  position:
+    x1: 0.07250000000000001
+    y1: 0.07250000000000001
+    x2: 0.0875
+    y2: 0.0875
+  size:
+    width: 0.014999999999999993
+    height: 0.014999999999999993
+- name: layer67_3
+  layer: layer67
+  layer_num: 67
+  datatype: 20
+  position:
+    x1: 0.12250000000000001
+    y1: 0.12250000000000001
+    x2: 0.1375
+    y2: 0.1375
+  size:
+    width: 0.014999999999999993
+    height: 0.014999999999999993
+- name: layer67_4
+  layer: layer67
+  layer_num: 67
+  datatype: 20
+  position:
+    x1: 0.17250000000000001
+    y1: 0.17250000000000001
+    x2: 0.1875
+    y2: 0.1875
+  size:
+    width: 0.014999999999999993
+    height: 0.014999999999999993
+- name: layer68_1
+  layer: layer68
+  layer_num: 68
+  datatype: 20
+  position:
+    x1: 0.2225
+    y1: 0.2225
+    x2: 0.23750000000000002
+    y2: 0.23750000000000002
+  size:
+    width: 0.015000000000000013
+    height: 0.015000000000000013
+- name: layer68_2
+  layer: layer68
+  layer_num: 68
+  datatype: 20
+  position:
+    x1: 0.1525
+    y1: 0.1525
+    x2: 0.1675
+    y2: 0.1675
+  size:
+    width: 0.015000000000000013
+    height: 0.015000000000000013

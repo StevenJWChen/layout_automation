@@ -1,0 +1,47 @@
+# This demonstrates what users can edit
+
+cell_name: demo_cell
+dimensions:
+  width: 100.0
+  height: 50.0
+
+polygons:
+  # Transistor gate
+  - name: poly_gate
+    layer: poly
+    layer_num: 66
+    datatype: 0
+    position:
+      x1: 40.0        # Move left/right
+      y1: 10.0        # Move up/down
+      x2: 45.0        # Adjust width
+      y2: 40.0        # Adjust height
+    size:
+      width: 5.0      # Gate length (can be changed!)
+      height: 30.0    # Gate width (can be changed!)
+
+  # Source/Drain diffusion
+  - name: diff_region
+    layer: diff
+    layer_num: 65
+    datatype: 0
+    position:
+      x1: 30.0
+      y1: 15.0
+      x2: 55.0
+      y2: 35.0
+    size:
+      width: 25.0     # Diffusion width
+      height: 20.0    # Diffusion height
+    spacing:
+      - type: horizontal_spacing
+        to: diff_region_2
+        spacing: 10.0  # Minimum spacing (can be increased!)
+        direction: right
+
+# Users can:
+# 1. Change any x1, y1, x2, y2 values to move polygons
+# 2. Change width/height to resize
+# 3. Adjust spacing values to change distances
+# 4. Add new polygons by copying and modifying entries
+# 5. Delete polygons by removing entries

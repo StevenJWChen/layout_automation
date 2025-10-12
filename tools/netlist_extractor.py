@@ -15,7 +15,7 @@ This is a real geometric extractor, not just metadata lookup.
 from typing import Dict, List, Tuple, Set, Optional
 from dataclasses import dataclass
 from layout_automation.lvs import Netlist, Device, Net
-from layout_automation.gds_cell import GDSCell as Cell
+from layout_automation.gds_cell import Cell
 from layout_automation.technology import Technology
 from layout_automation.units import to_um
 
