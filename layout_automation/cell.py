@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Cell class for constraint-based layout automation
-Supports hierarchical cell instances with constraint solving using Z3
+Supports hierarchical cell instances with constraint solving using OR-Tools
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import copy as copy_module
 from typing import List, Union, Tuple, Dict, Optional
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from scipy.optimize import linprog, minimize
+from ortools.sat.python import cp_model
 import numpy as np
 
 
@@ -243,137 +243,126 @@ class Cell:
 
     def solver(self, fix_leaf_positions: bool = True, integer_positions: bool = True) -> bool:
         """
-        Solve constraints to determine cell positions using SciPy optimization
+        Solve constraints to determine cell positions using OR-Tools CP-SAT solver
 
         Args:
             fix_leaf_positions: If True, assigns default positions to leaf cells
-            integer_positions: If True, rounds all positions to integers
+            integer_positions: If True, uses integer variables (recommended for OR-Tools)
 
         Returns:
             True if solution found, False otherwise
         """
         all_cells = self._get_all_cells()
 
-        # Build variable counter
+        # Create OR-Tools model
+        model = cp_model.CpModel()
+
+        # Build variable counter and create integer variables
         var_counter = {}
+        var_objects = {}  # Map from variable index to OR-Tools variable object
+
+        # Define reasonable bounds for coordinates (adjust as needed)
+        coord_min = 0
+        coord_max = 10000
+
         for cell in all_cells:
-            cell._get_var_indices(var_counter)
+            cell_id = id(cell)
+            if cell_id not in var_counter:
+                start_idx = len(var_counter) * 4
+                var_counter[cell_id] = start_idx
 
-        n_vars = len(var_counter) * 4
+                # Create 4 integer variables for each cell: x1, y1, x2, y2
+                x1_var = model.NewIntVar(coord_min, coord_max, f'{cell.name}_x1')
+                y1_var = model.NewIntVar(coord_min, coord_max, f'{cell.name}_y1')
+                x2_var = model.NewIntVar(coord_min, coord_max, f'{cell.name}_x2')
+                y2_var = model.NewIntVar(coord_min, coord_max, f'{cell.name}_y2')
 
-        # Build constraints in SciPy format
-        inequality_constraints = []  # List of LinearConstraint objects
-        equality_constraints = []
-        bounds = [(None, None)] * n_vars  # Bounds for each variable
+                var_objects[start_idx] = x1_var
+                var_objects[start_idx + 1] = y1_var
+                var_objects[start_idx + 2] = x2_var
+                var_objects[start_idx + 3] = y2_var
 
         # Add basic geometric constraints (x2 > x1, y2 > y1)
         for cell in all_cells:
             x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
+            x1_var = var_objects[x1_idx]
+            y1_var = var_objects[y1_idx]
+            x2_var = var_objects[x2_idx]
+            y2_var = var_objects[y2_idx]
 
-            # x2 > x1 => x2 - x1 > 0 => -x1 + x2 >= 0.01 (small epsilon for strict inequality)
-            A = np.zeros(n_vars)
-            A[x1_idx] = -1
-            A[x2_idx] = 1
-            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
+            # x2 > x1 (at least 1 unit larger)
+            model.Add(x2_var >= x1_var + 1)
 
-            # y2 > y1 => y2 - y1 > 0
-            A = np.zeros(n_vars)
-            A[y1_idx] = -1
-            A[y2_idx] = 1
-            inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 0.01})
+            # y2 > y1 (at least 1 unit larger)
+            model.Add(y2_var >= y1_var + 1)
 
         # For leaf cells, optionally set default sizes
         if fix_leaf_positions:
             for cell in all_cells:
                 if cell.is_leaf:
                     x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
+                    x1_var = var_objects[x1_idx]
+                    y1_var = var_objects[y1_idx]
+                    x2_var = var_objects[x2_idx]
+                    y2_var = var_objects[y2_idx]
 
                     # x1 >= 0
-                    A = np.zeros(n_vars)
-                    A[x1_idx] = 1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+                    model.Add(x1_var >= 0)
 
                     # y1 >= 0
-                    A = np.zeros(n_vars)
-                    A[y1_idx] = 1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+                    model.Add(y1_var >= 0)
 
-                    # x2 - x1 >= 10
-                    A = np.zeros(n_vars)
-                    A[x1_idx] = -1
-                    A[x2_idx] = 1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
-
-                    # y2 - y1 >= 10
-                    A = np.zeros(n_vars)
-                    A[y1_idx] = -1
-                    A[y2_idx] = 1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
+                    # Width and height at least 10 units
+                    model.Add(x2_var - x1_var >= 10)
+                    model.Add(y2_var - y1_var >= 10)
 
         # Add parent-child bounding constraints
-        self._add_parent_child_constraints_scipy(inequality_constraints, var_counter, n_vars)
+        self._add_parent_child_constraints_ortools(model, var_counter, var_objects)
 
         # Add all user constraints from the hierarchy
-        self._add_constraints_recursive_scipy(inequality_constraints, equality_constraints,
-                                               var_counter, n_vars)
+        self._add_constraints_recursive_ortools(model, var_counter, var_objects)
 
-        # Initial guess - spread out cells
-        x0 = np.zeros(n_vars)
-        for i, cell in enumerate(all_cells):
+        # Objective: minimize total layout size (sum of widths and heights)
+        # We'll minimize the maximum x and y coordinates
+        objective_terms = []
+        for cell in all_cells:
             x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
-            x0[x1_idx] = i * 30
-            x0[y1_idx] = i * 30
-            x0[x2_idx] = i * 30 + 20
-            x0[y2_idx] = i * 30 + 20
+            x2_var = var_objects[x2_idx]
+            y2_var = var_objects[y2_idx]
+            # Add width and height to minimize compactness
+            objective_terms.append(x2_var)
+            objective_terms.append(y2_var)
 
-        # Objective: minimize sum of areas (or minimize total layout size)
-        def objective(x):
-            total = 0
-            for cell in all_cells:
-                x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
-                width = x[x2_idx] - x[x1_idx]
-                height = x[y2_idx] - x[y1_idx]
-                total += width * height
-            return total
+        # Minimize sum of all x2 and y2 coordinates (pushes layout to be compact)
+        model.Minimize(sum(objective_terms))
 
-        # Combine all constraints
-        all_constraints = inequality_constraints + equality_constraints
+        # Solve the model
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 60.0  # Set timeout
+        status = solver.Solve(model)
 
-        # Solve using SciPy minimize
-        result = minimize(objective, x0, method='SLSQP', constraints=all_constraints,
-                         options={'maxiter': 1000, 'ftol': 1e-6})
-
-        if result.success:
-            # Round to integers if requested
-            if integer_positions:
-                solution = np.round(result.x).astype(int)
-            else:
-                solution = result.x
-
+        if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
             # Extract solutions
             for cell in all_cells:
                 x1_idx, y1_idx, x2_idx, y2_idx = cell._get_var_indices(var_counter)
-                if integer_positions:
-                    cell.pos_list = [
-                        int(solution[x1_idx]),
-                        int(solution[y1_idx]),
-                        int(solution[x2_idx]),
-                        int(solution[y2_idx])
-                    ]
-                else:
-                    cell.pos_list = [
-                        float(solution[x1_idx]),
-                        float(solution[y1_idx]),
-                        float(solution[x2_idx]),
-                        float(solution[y2_idx])
-                    ]
+                cell.pos_list = [
+                    solver.Value(var_objects[x1_idx]),
+                    solver.Value(var_objects[y1_idx]),
+                    solver.Value(var_objects[x2_idx]),
+                    solver.Value(var_objects[y2_idx])
+                ]
 
             # Update parent bounds to tightly fit children
             self._update_parent_bounds()
 
+            if status == cp_model.OPTIMAL:
+                print(f"Optimal solution found in {solver.WallTime():.2f}s")
+            else:
+                print(f"Feasible solution found in {solver.WallTime():.2f}s")
+
             return True
         else:
-            print(f"Optimization failed: {result.message}")
+            print(f"Solver failed with status: {solver.StatusName(status)}")
             return False
 
     def _get_all_cells(self) -> List['Cell']:
@@ -437,99 +426,104 @@ class Cell:
             return 0
         return 1 + max(self._get_cell_depth(child) for child in cell.children)
 
-    def _add_parent_child_constraints_scipy(self, inequality_constraints: List,
-                                             var_counter: Dict[int, int], n_vars: int):
+    def _add_parent_child_constraints_ortools(self, model: cp_model.CpModel,
+                                               var_counter: Dict[int, int],
+                                               var_objects: Dict[int, cp_model.IntVar]):
         """
         Add constraints ensuring parent cells encompass their children
 
         Args:
-            inequality_constraints: List to append constraint dicts to
+            model: OR-Tools CP model
             var_counter: Variable counter dictionary
-            n_vars: Total number of variables
+            var_objects: Dictionary mapping variable indices to OR-Tools variables
         """
         all_cells = self._get_all_cells()
 
         for cell in all_cells:
             # Only add bounding constraints for container cells (non-leaf with children)
             if not cell.is_leaf and len(cell.children) > 0:
-                parent_x1, parent_y1, parent_x2, parent_y2 = cell._get_var_indices(var_counter)
+                parent_x1_idx, parent_y1_idx, parent_x2_idx, parent_y2_idx = cell._get_var_indices(var_counter)
+                parent_x1 = var_objects[parent_x1_idx]
+                parent_y1 = var_objects[parent_y1_idx]
+                parent_x2 = var_objects[parent_x2_idx]
+                parent_y2 = var_objects[parent_y2_idx]
 
                 for child in cell.children:
-                    child_x1, child_y1, child_x2, child_y2 = child._get_var_indices(var_counter)
+                    child_x1_idx, child_y1_idx, child_x2_idx, child_y2_idx = child._get_var_indices(var_counter)
+                    child_x1 = var_objects[child_x1_idx]
+                    child_y1 = var_objects[child_y1_idx]
+                    child_x2 = var_objects[child_x2_idx]
+                    child_y2 = var_objects[child_y2_idx]
 
                     # Parent must encompass child
-                    # parent_x1 <= child_x1 => child_x1 - parent_x1 >= 0
-                    A = np.zeros(n_vars)
-                    A[parent_x1] = -1
-                    A[child_x1] = 1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
+                    model.Add(parent_x1 <= child_x1)
+                    model.Add(parent_y1 <= child_y1)
+                    model.Add(parent_x2 >= child_x2)
+                    model.Add(parent_y2 >= child_y2)
 
-                    # parent_y1 <= child_y1
-                    A = np.zeros(n_vars)
-                    A[parent_y1] = -1
-                    A[child_y1] = 1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
-
-                    # parent_x2 >= child_x2 => parent_x2 - child_x2 >= 0
-                    A = np.zeros(n_vars)
-                    A[parent_x2] = 1
-                    A[child_x2] = -1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
-
-                    # parent_y2 >= child_y2
-                    A = np.zeros(n_vars)
-                    A[parent_y2] = 1
-                    A[child_y2] = -1
-                    inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x)})
-
-    def _add_constraints_recursive_scipy(self, inequality_constraints: List,
-                                          equality_constraints: List,
-                                          var_counter: Dict[int, int], n_vars: int):
+    def _add_constraints_recursive_ortools(self, model: cp_model.CpModel,
+                                            var_counter: Dict[int, int],
+                                            var_objects: Dict[int, cp_model.IntVar]):
         """
         Recursively add all user constraints
 
         Args:
-            inequality_constraints: List to append inequality constraint dicts to
-            equality_constraints: List to append equality constraint dicts to
+            model: OR-Tools CP model
             var_counter: Variable counter dictionary
-            n_vars: Total number of variables
+            var_objects: Dictionary mapping variable indices to OR-Tools variables
         """
         # Add constraints from this cell
         for cell1, constraint_str, cell2 in self.constraints:
             parsed_constraints = self._parse_constraint(constraint_str, cell1, cell2, var_counter)
 
             for operator, left_expr, right_expr, var_map in parsed_constraints:
-                # Parse both expressions into coefficient vectors
-                left_coeffs, left_const = self._parse_expression_to_coeffs(left_expr, var_map, n_vars)
-                right_coeffs, right_const = self._parse_expression_to_coeffs(right_expr, var_map, n_vars)
+                # Build linear expressions for OR-Tools
+                left_linear_expr = self._build_ortools_linear_expr(left_expr, var_map, var_objects)
+                right_linear_expr = self._build_ortools_linear_expr(right_expr, var_map, var_objects)
 
-                # Constraint: left OP right => left - right OP 0
-                A = left_coeffs - right_coeffs
-                b = right_const - left_const
-
+                # Add constraint based on operator
                 if operator in ['<', '<=']:
-                    # left <= right => left - right <= 0 => -(left - right) >= 0
-                    inequality_constraints.append({
-                        'type': 'ineq',
-                        'fun': lambda x, A=A, b=b: -np.dot(A, x) - b
-                    })
+                    model.Add(left_linear_expr <= right_linear_expr)
                 elif operator in ['>', '>=']:
-                    # left >= right => left - right >= 0
-                    inequality_constraints.append({
-                        'type': 'ineq',
-                        'fun': lambda x, A=A, b=b: np.dot(A, x) + b
-                    })
+                    model.Add(left_linear_expr >= right_linear_expr)
                 elif operator == '=':
-                    # left = right => left - right = 0
-                    equality_constraints.append({
-                        'type': 'eq',
-                        'fun': lambda x, A=A, b=b: np.dot(A, x) + b
-                    })
+                    model.Add(left_linear_expr == right_linear_expr)
 
         # Recursively add constraints from children
         for child in self.children:
-            child._add_constraints_recursive_scipy(inequality_constraints, equality_constraints,
-                                                    var_counter, n_vars)
+            child._add_constraints_recursive_ortools(model, var_counter, var_objects)
+
+    def _build_ortools_linear_expr(self, expr_str: str, var_map: Dict[str, int],
+                                     var_objects: Dict[int, cp_model.IntVar]):
+        """
+        Build an OR-Tools linear expression from a string expression
+
+        Args:
+            expr_str: Expression string like 'sx1+5' or 'ox2*2-3' or 'sx2-sx1'
+            var_map: Mapping of variable names to indices
+            var_objects: Dictionary mapping variable indices to OR-Tools variables
+
+        Returns:
+            Linear expression for OR-Tools
+        """
+        # Parse the expression using existing parser
+        n_vars = len(var_objects)
+        coeffs, constant = self._parse_expression_to_coeffs(expr_str, var_map, n_vars)
+
+        # Build OR-Tools linear expression
+        linear_expr = int(constant)  # Start with the constant term
+
+        for var_idx, coeff in enumerate(coeffs):
+            if coeff != 0 and var_idx in var_objects:
+                var = var_objects[var_idx]
+                if coeff == 1:
+                    linear_expr += var
+                elif coeff == -1:
+                    linear_expr -= var
+                else:
+                    linear_expr += int(coeff) * var
+
+        return linear_expr
 
     def draw(self, solve_first: bool = True, ax=None, show: bool = True):
         """
