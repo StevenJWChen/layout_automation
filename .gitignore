@@ -40,7 +40,16 @@ Thumbs.db
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Test outputs
-*.gds
-*.png
+# Test outputs (keep outputs/ organized)
 test_output/
+
+# Output files in examples and tests
+examples/*.gds
+examples/*.png
+tests/*.gds
+tests/*.png
+
+# Report files
+*_extracted.txt
+*_report.txt
+*drc_violations.txt

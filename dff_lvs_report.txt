@@ -1,9 +1,0 @@
-LVS Report for DFF_layout
-======================================================================
-
-Schematic: DFF (16 devices)
-Layout:    DFF_layout_extracted (16 devices)
-
-Total violations: 0
-
-✅ LVS CLEAN - Netlists match!
