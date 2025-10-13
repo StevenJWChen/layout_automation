@@ -8,7 +8,7 @@ Complete end-to-end verification flow
 from layout_automation.lvs import Netlist, Device
 from layout_automation.layout_from_schematic import LayoutGenerator
 from layout_automation.drc_improved import run_improved_drc
-from netlist_extractor_improved import extract_improved_netlist
+from tools.netlist_extractor_improved import extract_improved_netlist
 from layout_automation.lvs import LVSChecker
 from layout_automation.technology import Technology
 from layout_automation.units import to_um

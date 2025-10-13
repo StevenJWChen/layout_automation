@@ -8,9 +8,17 @@ Examples demonstrating enhanced features:
 4. Array generators
 """
 
+import sys
+sys.path.insert(0, '.')  # Add current directory to path for examples module
+
 from layout_automation.gds_cell import Cell, Polygon, CellInstance
 from layout_automation.drc import DRCChecker, DRCRuleSet, create_default_rules
-from examples.constraint_debug import ConstraintDebugger, create_constraint_report
+try:
+    from examples.constraint_debug import ConstraintDebugger, create_constraint_report
+except ImportError:
+    print("Warning: constraint_debug module not available, some features will be skipped")
+    ConstraintDebugger = None
+    create_constraint_report = None
 from layout_automation.array_gen import ArrayGenerator, create_row, create_grid
 import matplotlib.pyplot as plt
 
@@ -122,21 +130,26 @@ result = debug_cell.solver()
 print(f"Solver result: {result}\n")
 
 # Debug constraints
-debugger = ConstraintDebugger(debug_cell)
-status = debugger.check_constraints()
+if ConstraintDebugger is not None:
+    debugger = ConstraintDebugger(debug_cell)
+    status = debugger.check_constraints()
 
-print("Checking constraint satisfaction...")
-debugger.print_constraint_status(show_satisfied=True)
+    print("Checking constraint satisfaction...")
+    debugger.print_constraint_status(show_satisfied=True)
 
-# Create diagnostic report
-create_constraint_report(debug_cell, 'constraint_report.txt')
-print("✓ Detailed report saved to constraint_report.txt\n")
+    # Create diagnostic report
+    create_constraint_report(debug_cell, 'constraint_report.txt')
+    print("✓ Detailed report saved to constraint_report.txt\n")
 
-# Visualize constraints
-fig = debugger.visualize_constraints(show=False)
-plt.savefig('example_constraint_viz.png', dpi=150, bbox_inches='tight')
-plt.close()
-print("✓ Constraint visualization saved to example_constraint_viz.png\n")
+    # Visualize constraints
+    fig = debugger.visualize_constraints(show=False)
+else:
+    print("Constraint debugger not available - skipping\n")
+    fig = None
+if fig is not None:
+    plt.savefig('example_constraint_viz.png', dpi=150, bbox_inches='tight')
+    plt.close()
+    print("✓ Constraint visualization saved to example_constraint_viz.png\n")
 
 print("="*70)
 print("EXAMPLE 4: Array Generators")
@@ -284,12 +297,15 @@ violations = checker.check_cell(complex_cell)
 print(f"DRC violations: {len(violations)}\n")
 
 # Debug constraints
-print("Debugging constraints...")
-debugger = ConstraintDebugger(complex_cell)
-debugger.check_constraints()
-satisfied = sum(1 for c in debugger.constraint_status if c['satisfied'])
-total = len(debugger.constraint_status)
-print(f"Constraint status: {satisfied}/{total} satisfied\n")
+if ConstraintDebugger is not None:
+    print("Debugging constraints...")
+    debugger = ConstraintDebugger(complex_cell)
+    debugger.check_constraints()
+    satisfied = sum(1 for c in debugger.constraint_status if c['satisfied'])
+    total = len(debugger.constraint_status)
+    print(f"Constraint status: {satisfied}/{total} satisfied\n")
+else:
+    print("Constraint debugger not available - skipping\n")
 
 # Visualize
 fig = complex_cell.draw(solve_first=False, show=False)

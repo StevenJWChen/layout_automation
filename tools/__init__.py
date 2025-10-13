@@ -20,7 +20,7 @@ from .gds_to_constraints import (
 from .netlist_extractor import NetlistExtractor
 from .netlist_extractor_improved import ImprovedNetlistExtractor
 from .skywater_extractor import SkyWaterExtractor
-from .skywater_direct_extractor import SkyWaterDirectExtractor
+from .skywater_direct_extractor import DirectSkyWaterExtractor
 from .end_to_end_flow import EndToEndFlow
 
 __all__ = [

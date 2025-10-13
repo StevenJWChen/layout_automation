@@ -15,7 +15,7 @@ Each test case runs the complete flow and reports results.
 
 import sys
 from layout_automation.lvs import Netlist, Device
-from end_to_end_flow import EndToEndFlow
+from tools.end_to_end_flow import EndToEndFlow
 from layout_automation.technology import create_sky130_tech
 
 

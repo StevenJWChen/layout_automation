@@ -389,11 +389,16 @@ class Cell:
         all_polygons, all_instances, all_cells_dict = self._get_all_elements()
 
         # Build variable counter
+        # We need to include ALL polygons from ALL cells because constraints may reference them
         var_counter = {}
         for poly in all_polygons:
             poly._get_var_indices(var_counter)
         for inst in all_instances:
             inst._get_var_indices(var_counter)
+        # Also add polygons from all referenced cells (they may appear in constraints)
+        for cell in all_cells_dict.values():
+            for poly in cell.polygons:
+                poly._get_var_indices(var_counter)
 
         n_vars = len(var_counter) * 4
 
@@ -738,12 +743,20 @@ class Cell:
                 # Calculate offset for instance's contents
                 # Get the cell's bounding box origin
                 if len(instance.cell.polygons) > 0:
-                    cell_x1 = min(p.pos_list[0] for p in instance.cell.polygons if p.pos_list[0] is not None)
-                    cell_y1 = min(p.pos_list[1] for p in instance.cell.polygons if p.pos_list[1] is not None)
+                    # Get valid polygon positions (filter out None)
+                    valid_x_positions = [p.pos_list[0] for p in instance.cell.polygons if p.pos_list[0] is not None]
+                    valid_y_positions = [p.pos_list[1] for p in instance.cell.polygons if p.pos_list[1] is not None]
 
-                    # Transform: place cell origin at instance position
-                    child_offset_x = inst_x1 + offset_x - cell_x1
-                    child_offset_y = inst_y1 + offset_y - cell_y1
+                    if valid_x_positions and valid_y_positions:
+                        cell_x1 = min(valid_x_positions)
+                        cell_y1 = min(valid_y_positions)
+                        # Transform: place cell origin at instance position
+                        child_offset_x = inst_x1 + offset_x - cell_x1
+                        child_offset_y = inst_y1 + offset_y - cell_y1
+                    else:
+                        # All positions are None, use instance position directly
+                        child_offset_x = inst_x1 + offset_x
+                        child_offset_y = inst_y1 + offset_y
                 else:
                     # No polygons, use instance position directly
                     child_offset_x = inst_x1 + offset_x
