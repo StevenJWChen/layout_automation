@@ -124,6 +124,8 @@ class Cell:
         self.polygons = []  # Polygons in this cell
         self.instances = []  # Cell instances in this cell
         self.constraints = []  # Constraints between elements
+        self.frozen = False  # Whether layout is frozen (fixed positions)
+        self._frozen_bbox = None  # Cached bounding box when frozen
 
     def add_polygon(self, polygon: Union[Polygon, List[Polygon]]):
         """
@@ -366,11 +368,15 @@ class Cell:
             # Add the instance's cell if not already added
             if id(instance.cell) not in all_cells:
                 all_cells[id(instance.cell)] = instance.cell
-                # Get sub-instances (NOT polygons!) from that cell
-                _, sub_insts, sub_cells_dict = instance.cell._get_all_elements()
-                # Do NOT extend all_polygons - referenced cells have fixed layouts
-                all_instances.extend(sub_insts)
-                all_cells.update(sub_cells_dict)
+
+                # If the instance's cell is frozen, don't recurse into it
+                # Frozen cells have fixed internal layouts
+                if not instance.cell.frozen:
+                    # Get sub-instances (NOT polygons!) from that cell
+                    _, sub_insts, sub_cells_dict = instance.cell._get_all_elements()
+                    # Do NOT extend all_polygons - referenced cells have fixed layouts
+                    all_instances.extend(sub_insts)
+                    all_cells.update(sub_cells_dict)
 
         return all_polygons, all_instances, all_cells
 
@@ -472,8 +478,12 @@ class Cell:
             A[y2_idx] = 1
             inequality_constraints.append({'type': 'ineq', 'fun': lambda x, A=A: np.dot(A, x) - 10})
 
-        # Add user constraints from all cells
+        # Add user constraints from all cells (skip frozen cells)
         for cell in all_cells_dict.values():
+            # Skip constraints from frozen cells - their layouts are fixed
+            if cell.frozen:
+                continue
+
             for obj1, constraint_str, obj2 in cell.constraints:
                 parsed_constraints = cell._parse_constraint(constraint_str, obj1, obj2, var_counter)
 
@@ -769,6 +779,117 @@ class Cell:
         """Create a deep copy of this cell"""
         new_cell = copy_module.deepcopy(self)
         return new_cell
+
+    def freeze_layout(self) -> 'Cell':
+        """
+        Freeze this cell's layout, making all positions fixed.
+
+        After freezing:
+        - All polygon and instance positions are fixed
+        - The cell can be used as a standard cell or fixed block
+        - Instances of this cell won't participate in constraint solving
+        - The frozen layout maintains its relative positioning
+
+        Returns:
+            Self (for method chaining)
+
+        Example:
+            # Create and solve a basic cell
+            inverter = Cell('inverter')
+            # ... add polygons and constraints ...
+            inverter.solver()
+
+            # Freeze it as a standard cell
+            inverter.freeze_layout()
+
+            # Now use it as a fixed block
+            top = Cell('top')
+            inv1 = CellInstance('inv1', inverter)
+            inv2 = CellInstance('inv2', inverter)
+            top.add_instance([inv1, inv2])
+            # Only inv1 and inv2 positions will be solved, inverter internals are fixed
+        """
+        if not self.frozen:
+            # Verify all polygons and instances have positions
+            for poly in self.polygons:
+                if None in poly.pos_list:
+                    raise ValueError(f"Cannot freeze layout: polygon '{poly.name}' has unsolved positions. Run solver() first.")
+
+            for inst in self.instances:
+                if None in inst.pos_list:
+                    raise ValueError(f"Cannot freeze layout: instance '{inst.name}' has unsolved positions. Run solver() first.")
+
+            # Calculate and cache bounding box
+            all_x = []
+            all_y = []
+
+            for poly in self.polygons:
+                all_x.extend([poly.pos_list[0], poly.pos_list[2]])
+                all_y.extend([poly.pos_list[1], poly.pos_list[3]])
+
+            for inst in self.instances:
+                all_x.extend([inst.pos_list[0], inst.pos_list[2]])
+                all_y.extend([inst.pos_list[1], inst.pos_list[3]])
+
+            if all_x and all_y:
+                self._frozen_bbox = (min(all_x), min(all_y), max(all_x), max(all_y))
+            else:
+                self._frozen_bbox = (0, 0, 0, 0)
+
+            self.frozen = True
+            print(f"✓ Cell '{self.name}' frozen with bbox {self._frozen_bbox}")
+
+        return self
+
+    def unfreeze_layout(self) -> 'Cell':
+        """
+        Unfreeze this cell's layout, allowing positions to be re-solved.
+
+        Returns:
+            Self (for method chaining)
+        """
+        self.frozen = False
+        self._frozen_bbox = None
+        print(f"✓ Cell '{self.name}' unfrozen")
+        return self
+
+    def is_frozen(self) -> bool:
+        """
+        Check if this cell's layout is frozen.
+
+        Returns:
+            True if frozen, False otherwise
+        """
+        return self.frozen
+
+    def get_bbox(self) -> tuple:
+        """
+        Get bounding box of this cell.
+
+        Returns:
+            Tuple (x1, y1, x2, y2) or None if not computed
+        """
+        if self.frozen and self._frozen_bbox is not None:
+            return self._frozen_bbox
+
+        # Calculate on-the-fly if not frozen
+        all_x = []
+        all_y = []
+
+        for poly in self.polygons:
+            if None not in poly.pos_list:
+                all_x.extend([poly.pos_list[0], poly.pos_list[2]])
+                all_y.extend([poly.pos_list[1], poly.pos_list[3]])
+
+        for inst in self.instances:
+            if None not in inst.pos_list:
+                all_x.extend([inst.pos_list[0], inst.pos_list[2]])
+                all_y.extend([inst.pos_list[1], inst.pos_list[3]])
+
+        if all_x and all_y:
+            return (min(all_x), min(all_y), max(all_x), max(all_y))
+
+        return None
 
     def export_gds(self, filename: str, unit: float = 1e-6, precision: float = 1e-9,
                    technology=None):
