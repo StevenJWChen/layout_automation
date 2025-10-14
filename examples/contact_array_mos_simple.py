@@ -57,10 +57,10 @@ def create_contact_array_manual(name, rows, cols, contact_size=2, spacing=3):
 
     return array
 
-# Create 3x3 contact array
-print("Creating 3x3 contact array (2x2 contacts, 3 spacing)...")
-contact_array = create_contact_array_manual('contact_array_3x3', rows=3, cols=3,
-                                            contact_size=2, spacing=3)
+# Create 2x2 contact array (smaller to fit in metal regions)
+print("Creating 2x2 contact array (2x2 contacts, 2 spacing)...")
+contact_array = create_contact_array_manual('contact_array_2x2', rows=2, cols=2,
+                                            contact_size=2, spacing=2)
 
 print(f"  Contact array has {len(contact_array.polygons)} contacts")
 
@@ -123,17 +123,17 @@ def create_nmos_manual():
     metal_drain = Polygon('metal_drain', 'metal1')
 
     # Manually position (all coordinates explicit)
-    # Diffusion region
-    nmos_diff.pos_list = [5, 10, 35, 30]
+    # Diffusion region (30x20)
+    nmos_diff.pos_list = [0, 5, 30, 25]
 
-    # Poly gate crosses diffusion
-    poly_gate.pos_list = [15, 8, 25, 32]
+    # Poly gate crosses diffusion (8x26)
+    poly_gate.pos_list = [11, 3, 19, 29]
 
-    # Metal source on left
-    metal_source.pos_list = [6, 15, 14, 25]
+    # Metal source on left (larger to accommodate contacts: 8x12)
+    metal_source.pos_list = [1, 10, 9, 22]
 
-    # Metal drain on right
-    metal_drain.pos_list = [26, 15, 34, 25]
+    # Metal drain on right (larger to accommodate contacts: 8x12)
+    metal_drain.pos_list = [21, 10, 29, 22]
 
     nmos.add_polygon([nmos_diff, poly_gate, metal_source, metal_drain])
 
@@ -150,9 +150,10 @@ print("Adding frozen contact arrays to source/drain...")
 source_contacts = CellInstance('source_contacts', contact_array)
 drain_contacts = CellInstance('drain_contacts', contact_array)
 
-# Manually position contact arrays over metal regions
-source_contacts.pos_list = [7, 16, 7+12, 16+12]  # Over source metal
-drain_contacts.pos_list = [27, 16, 27+12, 16+12]  # Over drain metal
+# Manually position contact arrays over metal regions (2x2 array = 6x6 total)
+# Center in metal regions (metal is 8x12, contacts are 6x6)
+source_contacts.pos_list = [2, 13, 8, 19]  # Over source metal (centered)
+drain_contacts.pos_list = [22, 13, 28, 19]  # Over drain metal (centered)
 
 nmos.add_instance([source_contacts, drain_contacts])
 
@@ -186,7 +187,7 @@ print("STEP 4: Create Well Ring")
 print("-" * 80)
 print()
 
-def create_well_ring_manual(inner_width=40, inner_height=30, ring_width=5):
+def create_well_ring_manual(inner_width=40, inner_height=40, ring_width=5):
     """Create well ring with manual positioning"""
     ring = Cell('well_ring')
 
@@ -214,8 +215,8 @@ def create_well_ring_manual(inner_width=40, inner_height=30, ring_width=5):
     ring.add_polygon([left, right, bottom, top])
     return ring
 
-print("Creating well ring (40x30 opening, 5 width)...")
-well_ring = create_well_ring_manual(inner_width=40, inner_height=30, ring_width=5)
+print("Creating well ring (40x40 opening, 5 width)...")
+well_ring = create_well_ring_manual(inner_width=40, inner_height=40, ring_width=5)
 
 bbox = well_ring.get_bbox()
 print(f"  Well ring bbox: {bbox}")
@@ -256,8 +257,9 @@ nmos_inst = CellInstance('nmos', nmos)
 well_inst = CellInstance('well', well_ring)
 
 # Position manually (both are frozen)
-well_inst.pos_list = [0, 0, 50, 40]  # Well at origin
-nmos_inst.pos_list = [7, 5, 7+39, 5+32]  # NMOS centered in well
+# Well is 50x50, NMOS bbox is (0,3) to (30,29) = 30x26
+well_inst.pos_list = [0, 0, 50, 50]  # Well at origin
+nmos_inst.pos_list = [10, 12, 40, 38]  # NMOS centered in well (5 units padding on each side)
 
 complete_device.add_instance([well_inst, nmos_inst])
 
@@ -299,7 +301,7 @@ device_array = Cell('device_array_2x2')
 devices = []
 spacing = 10
 device_width = 50
-device_height = 40
+device_height = 50
 
 for i in range(2):
     for j in range(2):
@@ -341,23 +343,25 @@ print("=" * 80)
 print()
 print("✅ Complete Hierarchy Built:")
 print()
-print("  Level 1: Contact Array (3x3)")
-print("           └─ 9 contact squares → FROZEN")
+print("  Level 1: Contact Array (2x2)")
+print("           └─ 4 contact squares (2x2 each, 2 spacing)")
+print("           └─ Total size: 6x6 → FROZEN")
 print()
 print("  Level 2: NMOS Transistor")
-print("           ├─ Diffusion layer")
-print("           ├─ Poly gate")
-print("           ├─ Metal source (with frozen contacts)")
-print("           └─ Metal drain (with frozen contacts)")
-print("           └─ Complete NMOS → FROZEN")
+print("           ├─ Diffusion layer (30x20)")
+print("           ├─ Poly gate (8x26)")
+print("           ├─ Metal source (8x12, with centered contacts)")
+print("           └─ Metal drain (8x12, with centered contacts)")
+print("           └─ Total size: 30x26 → FROZEN")
 print()
 print("  Level 3: Complete Device")
-print("           ├─ Well ring → FROZEN")
-print("           └─ NMOS transistor → FROZEN")
-print("           └─ Complete device → FROZEN")
+print("           ├─ Well ring (50x50 outer, 40x40 inner)")
+print("           └─ NMOS transistor (centered with 5-unit padding)")
+print("           └─ Total size: 50x50 → FROZEN")
 print()
 print("  Level 4: Device Array (2x2)")
-print("           └─ 4 instances of frozen complete devices")
+print("           └─ 4 instances of frozen devices (10-unit spacing)")
+print("           └─ Total size: 110x110")
 print()
 print("🎯 Key Workflow Steps:")
 print()
