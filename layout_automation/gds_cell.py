@@ -127,6 +127,39 @@ class Cell:
         self.frozen = False  # Whether layout is frozen (fixed positions)
         self._frozen_bbox = None  # Cached bounding box when frozen
 
+    @classmethod
+    def from_gds(cls, filename: str, cell_name: Optional[str] = None,
+                 freeze_imported: bool = False, freeze_subcells: bool = True) -> 'Cell':
+        """
+        Create a Cell by importing from GDS file
+
+        Args:
+            filename: Input GDS file path
+            cell_name: Name of cell to import (if None, uses first cell)
+            freeze_imported: If True, freeze the imported layout (fixed)
+                           If False, import as constraint-capable (default)
+            freeze_subcells: If True and freeze_imported=True, also freeze all subcells
+
+        Returns:
+            New Cell with imported layout
+
+        Example:
+            # Import as fixed standard cell
+            inverter = Cell.from_gds('inv.gds', freeze_imported=True)
+
+            # Import for editing
+            custom = Cell.from_gds('base.gds', freeze_imported=False)
+
+            # Use in design
+            top = Cell('top')
+            inst = CellInstance('inv1', inverter)
+            top.add_instance(inst)
+        """
+        # Create temporary cell
+        temp_cell = cls("temp")
+        temp_cell.import_gds(filename, cell_name, freeze_imported, freeze_subcells)
+        return temp_cell
+
     def add_polygon(self, polygon: Union[Polygon, List[Polygon]]):
         """
         Add polygon(s) to this cell
@@ -992,16 +1025,36 @@ class Cell:
 
         return gds_cell
 
-    def import_gds(self, filename: str, top_cell_name: Optional[str] = None):
+    def import_gds(self, filename: str, top_cell_name: Optional[str] = None,
+                   freeze_imported: bool = False, freeze_subcells: bool = True):
         """
         Import layout from GDS file
 
         Args:
             filename: Input GDS file path
             top_cell_name: Name of top cell to import (if None, uses first cell)
+            freeze_imported: If True, freeze the imported cell's layout (fixed)
+                           If False, import as constraint-capable layout (default)
+            freeze_subcells: If True and freeze_imported=True, also freeze all subcells
+                           (default: True)
 
         Note: This creates a new Cell structure from the GDS.
               Constraints are not preserved in GDS format.
+
+        Freeze modes:
+            - freeze_imported=False: Import as normal cells with constraints
+                                    Can be modified and re-solved
+            - freeze_imported=True: Import as frozen (fixed) layout
+                                   Perfect for reusing as IP blocks/standard cells
+
+        Example:
+            # Import as fixed IP block
+            ip_block = Cell('ip')
+            ip_block.import_gds('pll.gds', freeze_imported=True)
+
+            # Import for further editing
+            cell = Cell('custom')
+            cell.import_gds('base.gds', freeze_imported=False)
         """
         # Read GDS library
         lib = gdstk.read_gds(filename)
@@ -1034,7 +1087,26 @@ class Cell:
         converted_cells = {}  # Track converted cells by name
         self._import_from_gds_cell(gds_top_cell, lib, converted_cells, reverse_layer_map)
 
-        print(f"Imported from {filename}, top cell: {gds_top_cell.name}")
+        # Freeze cells if requested
+        if freeze_imported:
+            if freeze_subcells:
+                # Freeze all subcells first (bottom-up)
+                for cell_name, cell in converted_cells.items():
+                    if cell != self:  # Don't freeze top yet
+                        try:
+                            cell.freeze_layout()
+                        except ValueError:
+                            print(f"Warning: Could not freeze subcell '{cell_name}' (has unsolved positions)")
+
+            # Freeze top cell
+            try:
+                self.freeze_layout()
+                print(f"✓ Imported and frozen from {filename}, top cell: {gds_top_cell.name}")
+            except ValueError as e:
+                print(f"Warning: Could not freeze top cell: {e}")
+                print(f"Imported from {filename}, top cell: {gds_top_cell.name} (not frozen)")
+        else:
+            print(f"Imported from {filename}, top cell: {gds_top_cell.name}")
 
     def _import_from_gds_cell(self, gds_cell: gdstk.Cell, lib: gdstk.Library,
                               converted_cells: Dict, reverse_layer_map: Dict):
