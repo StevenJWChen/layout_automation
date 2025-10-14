@@ -11,8 +11,15 @@ import copy as copy_module
 from typing import List, Union, Tuple, Dict, Optional
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from ortools.sat.python import cp_model
 import numpy as np
+
+# Optional OR-Tools import (may not be available or may have compatibility issues)
+try:
+    from ortools.sat.python import cp_model
+    HAS_ORTOOLS = True
+except (ImportError, OSError, Exception):
+    HAS_ORTOOLS = False
+    cp_model = None
 
 
 class Cell:
@@ -291,6 +298,12 @@ class Cell:
         Returns:
             True if solution found, False otherwise
         """
+        if not HAS_ORTOOLS:
+            raise RuntimeError(
+                "OR-Tools is not available. The constraint solver requires OR-Tools to be installed. "
+                "Please install it with: pip install ortools"
+            )
+
         all_cells = self._get_all_cells()
 
         # Create OR-Tools model

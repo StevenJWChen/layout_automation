@@ -13,6 +13,11 @@ Key Concept: Solve → Freeze → Reuse as Fixed Layout
 """
 
 import os
+import sys
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from layout_automation.gds_cell import Cell, Polygon, CellInstance
 
 # Create output directory

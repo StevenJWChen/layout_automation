@@ -10,7 +10,17 @@ A constraint-based IC layout automation toolkit supporting:
 - DRC (Design Rule Check) and LVS (Layout vs Schematic) verification
 """
 
-from .cell import Cell as ZCell
+# NOTE: cell.py import disabled due to OR-Tools segfault on Python 3.13
+# Try to import constraint-based cell (requires OR-Tools)
+# try:
+#     from .cell import Cell as ZCell
+#     HAS_ZCELL = True
+# except (ImportError, OSError, Exception):
+#     ZCell = None
+#     HAS_ZCELL = False
+ZCell = None
+HAS_ZCELL = False
+
 from .gds_cell import Cell as GDSCell, Polygon, CellInstance
 from .units import Unit
 from .technology import Technology
