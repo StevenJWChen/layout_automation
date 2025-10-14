@@ -72,15 +72,54 @@ class Cell:
         else:
             raise TypeError("Argument must be Cell instance or list of Cell instances")
 
-    def constrain(self, cell1: 'Cell', constraint_str: str, cell2: 'Cell' = None):
+    def constrain(self, cell1: Union['Cell', str], constraint_str: str = None, cell2: 'Cell' = None):
         """
-        Add constraint between two cells or absolute constraint on one cell
+        Add constraint between two cells, absolute constraint on one cell, or self-constraint
 
         Args:
-            cell1: First cell (uses 's' or 'x' prefix in constraint string)
+            cell1: First cell (uses 's' or 'x' prefix in constraint string), or constraint string for self
             cell2: Second cell (uses 'o' prefix). If None, uses absolute constraint
             constraint_str: Constraint string, e.g., 'sx1<ox2+3' or 'x2-x1=10'
+                           If cell1 is a string, this is treated as constraint_str for self-constraint
+
+        Usage modes:
+            1. Self-constraint:
+               cell.constrain('x2-x1=100, y2-y1=50')  # Constrain cell's own bbox
+
+            2. Absolute constraint on child:
+               parent.constrain(child, 'x1=10, y1=20')  # Position child absolutely
+
+            3. Relative constraint between children:
+               parent.constrain(child1, 'sx2+10=ox1', child2)  # Position child1 relative to child2
+
+        Auto-add instances:
+            If cell1 or cell2 are not in self.children, they will be automatically added.
         """
+        # Handle self-constraint mode: constrain('x2-x1=100')
+        if isinstance(cell1, str) and constraint_str is None:
+            constraint_str = cell1
+            cell1 = self
+            cell2 = None
+            # For self-constraints, we don't auto-add since self is already the parent
+            self.constraints.append((cell1, constraint_str, cell2))
+            return
+
+        # Normal mode: cell1 is a Cell object
+        if not isinstance(cell1, Cell):
+            raise TypeError(f"cell1 must be a Cell instance or constraint string, got {type(cell1)}")
+
+        if constraint_str is None:
+            raise ValueError("constraint_str is required when cell1 is a Cell")
+
+        # Auto-add instances to children if not already present
+        # This allows users to write: parent.constrain(child1, ..., child2)
+        # without explicitly calling parent.add_instance(child1) first
+        if cell1 != self and cell1 not in self.children:
+            self.children.append(cell1)
+
+        if cell2 is not None and cell2 != self and cell2 not in self.children:
+            self.children.append(cell2)
+
         self.constraints.append((cell1, constraint_str, cell2))
 
     def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
