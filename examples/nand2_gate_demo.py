@@ -173,20 +173,20 @@ def create_nand2_gate(nmos, pmos):
     output_metal = Polygon('OUTPUT', 'metal1')
     output_metal.pos_list = [21, 66, 29, 119]  # Connects NMOS_A drain to both PMOS drains
 
-    # Input A connection with metal-to-poly contacts
+    # Input A connection with metal-to-poly contact
     # Input A connects to PMOS_A and NMOS_A gates
     input_a_poly = Polygon('INPUT_A', 'poly')
     input_a_poly.pos_list = [11, 44, 19, 112]  # Spans NMOS_A and PMOS_A gates
 
-    # Add metal stub and contact for Input A (essential for external connection)
+    # Add metal stub and single contact for Input A (essential for external connection)
     input_a_metal = Polygon('INPUT_A_metal', 'metal1')
     input_a_metal.pos_list = [11, 75, 19, 85]  # Metal region over poly
 
-    # Contact array for metal-to-poly connection at Input A
-    input_a_contact = CellInstance('input_a_contact', contact_array)
-    input_a_contact.pos_list = [12, 77, 18, 83]  # Centered on metal/poly overlap
+    # Single contact for metal-to-poly connection at Input A
+    input_a_contact = Polygon('input_a_contact', 'contact')
+    input_a_contact.pos_list = [13, 78, 17, 82]  # Single 4x4 contact on metal/poly overlap
 
-    # Input B connection with metal-to-poly contacts
+    # Input B connection with metal-to-poly contact
     # Input B connects to PMOS_B and NMOS_B gates
     input_b_poly_nmos = Polygon('INPUT_B_nmos', 'poly')
     input_b_poly_nmos.pos_list = [11, 5, 19, 34]  # NMOS_B gate
@@ -194,19 +194,19 @@ def create_nand2_gate(nmos, pmos):
     input_b_poly_pmos = Polygon('INPUT_B_pmos', 'poly')
     input_b_poly_pmos.pos_list = [11, 122, 19, 151]  # PMOS_B gate
 
-    # Add metal stub and contact for Input B at NMOS_B
+    # Add metal stub and single contact for Input B at NMOS_B
     input_b_metal_nmos = Polygon('INPUT_B_metal_nmos', 'metal1')
     input_b_metal_nmos.pos_list = [11, 15, 19, 25]  # Metal over NMOS_B poly
 
-    input_b_contact_nmos = CellInstance('input_b_contact_nmos', contact_array)
-    input_b_contact_nmos.pos_list = [12, 17, 18, 23]  # Metal-to-poly contact
+    input_b_contact_nmos = Polygon('input_b_contact_nmos', 'contact')
+    input_b_contact_nmos.pos_list = [13, 18, 17, 22]  # Single 4x4 contact
 
-    # Add metal stub and contact for Input B at PMOS_B
+    # Add metal stub and single contact for Input B at PMOS_B
     input_b_metal_pmos = Polygon('INPUT_B_metal_pmos', 'metal1')
     input_b_metal_pmos.pos_list = [11, 132, 19, 142]  # Metal over PMOS_B poly
 
-    input_b_contact_pmos = CellInstance('input_b_contact_pmos', contact_array)
-    input_b_contact_pmos.pos_list = [12, 134, 18, 140]  # Metal-to-poly contact
+    input_b_contact_pmos = Polygon('input_b_contact_pmos', 'contact')
+    input_b_contact_pmos.pos_list = [13, 135, 17, 139]  # Single 4x4 contact
 
     # Vertical metal to connect Input B at both transistors
     input_b_metal_vertical = Polygon('INPUT_B_vertical', 'metal1')
@@ -214,17 +214,12 @@ def create_nand2_gate(nmos, pmos):
 
     nand2.add_polygon([
         vdd_rail, gnd_rail,
-        input_a_poly, input_a_metal,
+        input_a_poly, input_a_metal, input_a_contact,
         input_b_poly_nmos, input_b_poly_pmos,
         input_b_metal_nmos, input_b_metal_pmos, input_b_metal_vertical,
+        input_b_contact_nmos, input_b_contact_pmos,
         nmos_series, pmos_vdd_a, pmos_vdd_b, nmos_gnd,
         output_metal
-    ])
-
-    nand2.add_instance([
-        input_a_contact,
-        input_b_contact_nmos,
-        input_b_contact_pmos
     ])
 
     return nand2
@@ -287,7 +282,7 @@ if __name__ == "__main__":
     print("  - Input A: controls PMOS_A and NMOS_A (with metal-to-poly contacts)")
     print("  - Input B: controls PMOS_B and NMOS_B (with metal-to-poly contacts)")
     print("  - Output: LOW only when both A=1 AND B=1 (NAND logic)")
-    print("\nKey feature: Metal-to-poly contacts for gate connections!")
+    print("\nKey feature: Single metal-to-poly contacts for gate connections!")
     print("\nFiles generated:")
     print("  - demo_outputs/nand2_gate.gds")
     print("  - demo_outputs/nand2_gate.png")
