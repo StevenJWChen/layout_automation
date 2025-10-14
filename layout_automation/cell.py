@@ -432,6 +432,9 @@ class Cell:
         """
         Add constraints ensuring parent cells encompass their children
 
+        Uses AddMinEquality/AddMaxEquality for efficient bounding box constraints.
+        This is more efficient than individual inequality constraints per child.
+
         Args:
             model: OR-Tools CP model
             var_counter: Variable counter dictionary
@@ -448,18 +451,27 @@ class Cell:
                 parent_x2 = var_objects[parent_x2_idx]
                 parent_y2 = var_objects[parent_y2_idx]
 
+                # Collect all children's corner variables
+                child_x1_vars = []
+                child_y1_vars = []
+                child_x2_vars = []
+                child_y2_vars = []
+
                 for child in cell.children:
                     child_x1_idx, child_y1_idx, child_x2_idx, child_y2_idx = child._get_var_indices(var_counter)
-                    child_x1 = var_objects[child_x1_idx]
-                    child_y1 = var_objects[child_y1_idx]
-                    child_x2 = var_objects[child_x2_idx]
-                    child_y2 = var_objects[child_y2_idx]
+                    child_x1_vars.append(var_objects[child_x1_idx])
+                    child_y1_vars.append(var_objects[child_y1_idx])
+                    child_x2_vars.append(var_objects[child_x2_idx])
+                    child_y2_vars.append(var_objects[child_y2_idx])
 
-                    # Parent must encompass child
-                    model.Add(parent_x1 <= child_x1)
-                    model.Add(parent_y1 <= child_y1)
-                    model.Add(parent_x2 >= child_x2)
-                    model.Add(parent_y2 >= child_y2)
+                # Use AddMinEquality/AddMaxEquality for efficient bounding box computation
+                # Parent's bottom-left corner is the minimum of all children's bottom-left corners
+                model.AddMinEquality(parent_x1, child_x1_vars)
+                model.AddMinEquality(parent_y1, child_y1_vars)
+
+                # Parent's top-right corner is the maximum of all children's top-right corners
+                model.AddMaxEquality(parent_x2, child_x2_vars)
+                model.AddMaxEquality(parent_y2, child_y2_vars)
 
     def _add_constraints_recursive_ortools(self, model: cp_model.CpModel,
                                             var_counter: Dict[int, int],

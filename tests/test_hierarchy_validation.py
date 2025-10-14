@@ -139,9 +139,10 @@ if result:
     print("\nVerifying coordinate transformation:")
     print(f"  i1 instance at: x=[{i1.pos_list[0]:.1f}, {i1.pos_list[2]:.1f}]")
     print(f"  i2 instance at: x=[{i2.pos_list[0]:.1f}, {i2.pos_list[2]:.1f}]")
-    print(f"  Base poly1 at: x=[{poly1.pos_list[0]:.1f}, {poly1.pos_list[2]:.1f}]")
-    print(f"  Base metal1 at: x=[{metal1.pos_list[0]:.1f}, {metal1.pos_list[2]:.1f}]")
-    print("  (Drawing should show polygons at instance positions, not base cell positions)")
+    # Base cell polygons remain None (as expected - they're positioned via instances)
+    print(f"  Base poly1 at: {poly1.pos_list}")
+    print(f"  Base metal1 at: {metal1.pos_list}")
+    print("  (Drawing shows polygons at instance positions via transformation)")
     print("✓ PASS")
 else:
     print("✗ FAIL")
