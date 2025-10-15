@@ -344,11 +344,21 @@ class Cell:
             x2_var = var_objects[x2_idx]
             y2_var = var_objects[y2_idx]
 
-            # x2 > x1 (at least 1 unit larger)
-            model.Add(x2_var >= x1_var + 1)
+            # Check if cell is frozen - if so, fix its size
+            if cell._frozen and cell._frozen_bbox is not None:
+                x1_f, y1_f, x2_f, y2_f = cell._frozen_bbox
+                width = x2_f - x1_f
+                height = y2_f - y1_f
 
-            # y2 > y1 (at least 1 unit larger)
-            model.Add(y2_var >= y1_var + 1)
+                # Fix the size (but allow position to vary)
+                model.Add(x2_var - x1_var == width)
+                model.Add(y2_var - y1_var == height)
+            else:
+                # x2 > x1 (at least 1 unit larger)
+                model.Add(x2_var >= x1_var + 1)
+
+                # y2 > y1 (at least 1 unit larger)
+                model.Add(y2_var >= y1_var + 1)
 
         # For leaf cells, optionally set default sizes
         if fix_leaf_positions:
