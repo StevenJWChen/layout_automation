@@ -45,6 +45,7 @@ class Cell:
         """
         self.name = name
         self.children = []
+        self.child_dict = {}  # Dictionary mapping child names to child instances
         self.pos_list = [None, None, None, None]  # [x1, y1, x2, y2]
         self.constraints = []
         self.is_leaf = False
@@ -61,23 +62,31 @@ class Cell:
                 self.layer_name = arg
             elif isinstance(arg, Cell):
                 self.children.append(arg)
+                self.child_dict[arg.name] = arg
             elif isinstance(arg, list):
                 # List of Cell instances
-                self.children.extend([c for c in arg if isinstance(c, Cell)])
+                for c in arg:
+                    if isinstance(c, Cell):
+                        self.children.append(c)
+                        self.child_dict[c.name] = c
             else:
                 raise TypeError(f"Invalid argument type: {type(arg)}")
 
     def add_instance(self, instances: Union['Cell', List['Cell']]):
         """
-        Add child cell instance(s)
+        Add child cell instance(s) and update child_dict
 
         Args:
             instances: Single Cell instance or list of Cell instances
         """
         if isinstance(instances, Cell):
             self.children.append(instances)
+            self.child_dict[instances.name] = instances
         elif isinstance(instances, list):
-            self.children.extend([c for c in instances if isinstance(c, Cell)])
+            for c in instances:
+                if isinstance(c, Cell):
+                    self.children.append(c)
+                    self.child_dict[c.name] = c
         else:
             raise TypeError("Argument must be Cell instance or list of Cell instances")
 
@@ -694,18 +703,53 @@ class Cell:
                 ax.text(x1, y2 + 1, label, ha='left', va='bottom', fontsize=9,
                        weight='bold', color=edge_color, style='italic')
 
-    def copy(self) -> 'Cell':
+    # Class variable to track copy counts for automatic naming
+    _copy_counts = {}
+
+    def copy(self, new_name: str = None) -> 'Cell':
         """
-        Create a deep copy of this Cell instance
+        Create a deep copy of this Cell instance with optional automatic naming
+
+        Args:
+            new_name: Optional new name for the copy. If None, automatically generates
+                     a name by appending _c{N} where N is an incrementing number.
+                     Example: 'block' -> 'block_c1', 'block_c2', etc.
 
         Note: Variable indices are reset so the copy gets fresh constraint variables
 
         Returns:
             New Cell instance with copied data
+
+        Examples:
+            >>> block = Cell('reusable_block')
+            >>> copy1 = block.copy()  # Name: 'reusable_block_c1'
+            >>> copy2 = block.copy()  # Name: 'reusable_block_c2'
+            >>> copy3 = block.copy('custom_name')  # Name: 'custom_name'
         """
         new_cell = copy_module.deepcopy(self)
+
+        # Handle naming
+        if new_name is not None:
+            # User provided explicit name
+            new_cell.name = new_name
+        else:
+            # Automatic naming with _c{N} suffix
+            original_name = self.name
+
+            # Initialize counter for this original name if not exists
+            if original_name not in Cell._copy_counts:
+                Cell._copy_counts[original_name] = 0
+
+            # Increment counter
+            Cell._copy_counts[original_name] += 1
+            copy_num = Cell._copy_counts[original_name]
+
+            # Generate new name
+            new_cell.name = f"{original_name}_c{copy_num}"
+
         # Reset variable indices for the new copy and all descendants
         self._reset_var_indices_recursive(new_cell)
+
         return new_cell
 
     def _reset_var_indices_recursive(self, cell: 'Cell'):
@@ -1016,6 +1060,85 @@ class Cell:
 
         for child in cell.children:
             Cell._apply_offset_recursive(child, dx, dy)
+
+    def tree(self, show_positions: bool = True, show_layers: bool = True) -> str:
+        """
+        Display cell hierarchy as a tree structure
+
+        Args:
+            show_positions: If True, show position lists
+            show_layers: If True, show layer names for leaf cells
+
+        Returns:
+            String representation of the tree
+
+        Example output:
+            TOP_CELL [0, 0, 100, 100]
+            ├── block1 [10, 10, 30, 30] [FROZEN]
+            │   ├── metal (metal1) [0, 0, 20, 20]
+            │   └── poly (poly) [5, 5, 15, 15]
+            └── block2 [50, 10, 70, 30]
+                ├── metal (metal1) [0, 0, 20, 20]
+                └── poly (poly) [5, 5, 15, 15]
+        """
+        def _tree_recursive(cell, prefix="", is_last=True):
+            lines = []
+
+            # Build cell info string
+            info_parts = [cell.name]
+
+            # Add layer name if leaf cell
+            if cell.is_leaf and show_layers and cell.layer_name:
+                info_parts.append(f"({cell.layer_name})")
+
+            # Add position if requested
+            if show_positions and all(v is not None for v in cell.pos_list):
+                info_parts.append(f"{cell.pos_list}")
+
+            # Add frozen indicator
+            if cell._frozen:
+                info_parts.append("[FROZEN]")
+
+            # Create the line for this cell
+            lines.append(prefix + " ".join(info_parts))
+
+            # Prepare prefix for children
+            if prefix == "":
+                # Root level
+                child_prefix_mid = "├── "
+                child_prefix_last = "└── "
+                continuation_mid = "│   "
+                continuation_last = "    "
+            else:
+                # Calculate continuation based on whether this is the last child
+                if is_last:
+                    extension = "    "
+                else:
+                    extension = "│   "
+
+                child_prefix_mid = prefix[:-4] + extension + "├── "
+                child_prefix_last = prefix[:-4] + extension + "└── "
+                continuation_mid = prefix[:-4] + extension + "│   "
+                continuation_last = prefix[:-4] + extension + "    "
+
+            # Recursively add children
+            for i, child in enumerate(cell.children):
+                is_last_child = (i == len(cell.children) - 1)
+
+                if is_last_child:
+                    child_tree = _tree_recursive(child, child_prefix_last, True)
+                else:
+                    child_tree = _tree_recursive(child, child_prefix_mid, False)
+
+                lines.extend(child_tree)
+
+            return lines
+
+        # Generate tree starting from root
+        result_lines = _tree_recursive(self)
+        result = '\n'.join(result_lines)
+        print(result)
+        return result
 
     def __repr__(self):
         frozen_str = " [FROZEN]" if self._frozen else ""
