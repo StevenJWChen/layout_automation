@@ -1061,6 +1061,156 @@ class Cell:
         for child in cell.children:
             Cell._apply_offset_recursive(child, dx, dy)
 
+    @classmethod
+    def import_gds_to_cell(cls, filename: str, cell_name: Optional[str] = None,
+                          layer_map: Optional[Dict[Tuple[int, int], str]] = None,
+                          add_position_constraints: bool = True) -> 'Cell':
+        """
+        Import GDS and create a cell with constraints to minimize position changes
+
+        This method imports a GDS file and automatically adds constraints that
+        try to keep elements at their original positions. This allows you to:
+        1. Import an existing layout
+        2. Modify it by adding new constraints
+        3. Re-solve to get adjusted layout
+
+        Args:
+            filename: Input GDS file path
+            cell_name: Name of cell to import (if None, imports top cell)
+            layer_map: Optional mapping of (layer_number, datatype) to layer names
+            add_position_constraints: If True, adds constraints to minimize position changes
+
+        Returns:
+            Cell object with imported hierarchy and position constraints
+
+        Example:
+            >>> # Import existing layout
+            >>> cell = Cell.import_gds_to_cell('inverter.gds')
+            >>>
+            >>> # Add new constraint to move a specific element
+            >>> metal_layer = cell.child_dict['INVERTER_metal1_0']
+            >>> cell.constrain(metal_layer, 'x1=ox1+10', cell)  # Move 10 units right
+            >>>
+            >>> # Re-solve with minimal changes to other elements
+            >>> cell.solver()
+            >>>
+            >>> # Export modified layout
+            >>> cell.export_gds('inverter_modified.gds')
+        """
+        try:
+            import gdstk
+        except ImportError:
+            raise ImportError("gdstk library is required for GDS import. Install with: pip install gdstk")
+
+        # Default layer mapping
+        if layer_map is None:
+            layer_map = {
+                (1, 0): 'metal1',
+                (2, 0): 'metal2',
+                (3, 0): 'metal3',
+                (4, 0): 'metal4',
+                (5, 0): 'poly',
+                (6, 0): 'diff',
+                (7, 0): 'pdiff',
+                (8, 0): 'nwell',
+                (9, 0): 'contact',
+            }
+
+        # Read GDS file
+        lib = gdstk.read_gds(filename)
+
+        # Find the cell to import
+        if cell_name is None:
+            # Get top cells
+            all_cells = {cell.name: cell for cell in lib.cells}
+            referenced = set()
+            for cell in lib.cells:
+                for ref in cell.references:
+                    referenced.add(ref.cell.name)
+            top_cells = [name for name in all_cells if name not in referenced]
+
+            if not top_cells:
+                raise ValueError("No top-level cell found in GDS file")
+            cell_name = top_cells[0]
+
+        # Find the GDS cell
+        gds_cell = None
+        for cell in lib.cells:
+            if cell.name == cell_name:
+                gds_cell = cell
+                break
+
+        if gds_cell is None:
+            raise ValueError(f"Cell '{cell_name}' not found in GDS file")
+
+        # Convert GDS cell to Cell object
+        imported_cell = cls._from_gds_cell_with_constraints(gds_cell, layer_map, add_position_constraints)
+
+        print(f"✓ Imported cell '{imported_cell.name}' from {filename}")
+        print(f"  Children: {len(imported_cell.children)}")
+        if add_position_constraints:
+            print(f"  Position constraints added to minimize changes from original")
+
+        return imported_cell
+
+    @classmethod
+    def _from_gds_cell_with_constraints(cls, gds_cell, layer_map: Dict,
+                                       add_constraints: bool = True) -> 'Cell':
+        """
+        Convert a GDS cell to a Cell object with position constraints
+
+        Args:
+            gds_cell: gdstk Cell object
+            layer_map: Mapping of (layer, datatype) to layer names
+            add_constraints: If True, adds constraints to preserve original positions
+
+        Returns:
+            Cell object with position constraints
+        """
+        cell = cls(gds_cell.name)
+
+        # Process polygons
+        for i, polygon in enumerate(gds_cell.polygons):
+            layer_key = (polygon.layer, polygon.datatype)
+            layer_name = layer_map.get(layer_key, f'layer_{polygon.layer}')
+
+            # Get bounding box
+            bbox = polygon.bounding_box()
+            x1, y1 = bbox[0]
+            x2, y2 = bbox[1]
+
+            # Create leaf cell for this polygon
+            leaf_name = f'{gds_cell.name}_{layer_name}_{i}'
+            leaf = cls(leaf_name, layer_name)
+
+            # Add to parent
+            cell.add_instance(leaf)
+
+            if add_constraints:
+                # Store original position as constraint to minimize changes
+                # These constraints will try to keep the element at its original position
+                # but can be overridden by user-added constraints
+                cell.constrain(leaf, f'x1={x1}, y1={y1}, x2={x2}, y2={y2}')
+
+        # Process cell references recursively
+        for ref in gds_cell.references:
+            child_cell = cls._from_gds_cell_with_constraints(ref.cell, layer_map, add_constraints)
+            x_offset, y_offset = ref.origin
+
+            # Apply offset to all positions
+            if add_constraints and all(v is not None for v in child_cell.pos_list):
+                # Adjust constraints with offset
+                for child in child_cell.children:
+                    if all(v is not None for v in child.pos_list):
+                        child.pos_list[0] += x_offset
+                        child.pos_list[1] += y_offset
+                        child.pos_list[2] += x_offset
+                        child.pos_list[3] += y_offset
+
+            cell.add_instance(child_cell)
+
+        return cell
+
     def tree(self, show_positions: bool = True, show_layers: bool = True) -> str:
         """
         Display cell hierarchy as a tree structure
