@@ -50,6 +50,8 @@ class Cell:
         self.is_leaf = False
         self.layer_name = None
         self._var_indices = None  # Cache for variable indices in optimization vector
+        self._frozen = False  # Track if layout is frozen
+        self._frozen_bbox = None  # Cache bbox when frozen
 
         # Parse arguments
         for arg in args:
@@ -707,5 +709,304 @@ class Cell:
         for child in cell.children:
             self._reset_var_indices_recursive(child)
 
+    def freeze_layout(self) -> 'Cell':
+        """
+        Freeze the current layout, making all positions immutable
+
+        When frozen:
+        - All child cell positions are locked
+        - Internal structure cannot be modified
+        - Can be efficiently reused as a fixed IP block
+        - Bounding box is cached for fast access
+
+        Returns:
+            Self for method chaining
+        """
+        if self._frozen:
+            return self  # Already frozen
+
+        # Solve if not yet solved
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                raise RuntimeError(f"Cannot freeze cell '{self.name}': solver failed")
+
+        # Mark as frozen
+        self._frozen = True
+
+        # Cache the bounding box
+        self._frozen_bbox = tuple(self.pos_list)
+
+        # Recursively freeze all children
+        for child in self.children:
+            if not child.is_leaf:
+                child.freeze_layout()
+
+        print(f"✓ Cell '{self.name}' frozen with bbox {self._frozen_bbox}")
+        return self
+
+    def unfreeze_layout(self) -> 'Cell':
+        """
+        Unfreeze the layout, allowing modifications again
+
+        Returns:
+            Self for method chaining
+        """
+        self._frozen = False
+        self._frozen_bbox = None
+
+        # Recursively unfreeze all children
+        for child in self.children:
+            if not child.is_leaf:
+                child.unfreeze_layout()
+
+        return self
+
+    def is_frozen(self) -> bool:
+        """
+        Check if this cell's layout is frozen
+
+        Returns:
+            True if frozen, False otherwise
+        """
+        return self._frozen
+
+    def get_bbox(self) -> tuple:
+        """
+        Get the bounding box of this cell
+
+        Returns:
+            Tuple of (x1, y1, x2, y2) or None if not solved
+        """
+        if self._frozen and self._frozen_bbox is not None:
+            return self._frozen_bbox
+
+        if all(v is not None for v in self.pos_list):
+            return tuple(self.pos_list)
+
+        return None
+
+    def export_gds(self, filename: str, unit: float = 1e-6, precision: float = 1e-9,
+                   layer_map: Dict[str, Tuple[int, int]] = None):
+        """
+        Export cell hierarchy to GDS-II file format
+
+        Args:
+            filename: Output GDS file path
+            unit: Unit size in meters (default 1e-6 = 1 micrometer)
+            precision: Precision in meters (default 1e-9 = 1 nanometer)
+            layer_map: Optional mapping of layer names to (layer_number, datatype) tuples
+                      Example: {'metal1': (1, 0), 'poly': (2, 0)}
+        """
+        try:
+            import gdstk
+        except ImportError:
+            raise ImportError("gdstk library is required for GDS export. Install with: pip install gdstk")
+
+        # Default layer mapping
+        if layer_map is None:
+            layer_map = {
+                'metal1': (1, 0),
+                'metal2': (2, 0),
+                'metal3': (3, 0),
+                'metal4': (4, 0),
+                'poly': (5, 0),
+                'diff': (6, 0),
+                'pdiff': (7, 0),
+                'nwell': (8, 0),
+                'contact': (9, 0),
+            }
+
+        # Create GDS library
+        lib = gdstk.Library(name="LAYOUT", unit=unit, precision=precision)
+
+        # Convert cell hierarchy to GDS
+        gds_cells_dict = {}
+        self._convert_to_gds(lib, gds_cells_dict, layer_map)
+
+        # Write to file
+        lib.write_gds(filename)
+        print(f"Exported to {filename}")
+
+    def _convert_to_gds(self, lib: 'gdstk.Library', gds_cells_dict: Dict,
+                       layer_map: Dict, offset_x: float = 0, offset_y: float = 0):
+        """
+        Recursively convert cell hierarchy to GDS format
+
+        Args:
+            lib: GDS library object
+            gds_cells_dict: Dictionary tracking already-converted cells
+            layer_map: Mapping of layer names to (layer, datatype) tuples
+            offset_x: X offset for positioning
+            offset_y: Y offset for positioning
+        """
+        import gdstk
+
+        # Skip if already converted
+        if self.name in gds_cells_dict:
+            return gds_cells_dict[self.name]
+
+        # Create GDS cell
+        gds_cell = lib.new_cell(self.name)
+        gds_cells_dict[self.name] = gds_cell
+
+        # Process children
+        for child in self.children:
+            if child.is_leaf:
+                # Leaf cell - create rectangle on specified layer
+                if all(v is not None for v in child.pos_list):
+                    x1, y1, x2, y2 = child.pos_list
+                    x1 += offset_x
+                    y1 += offset_y
+                    x2 += offset_x
+                    y2 += offset_y
+
+                    # Get layer and datatype
+                    layer, datatype = layer_map.get(child.layer_name, (0, 0))
+
+                    # Create rectangle polygon
+                    rect = gdstk.rectangle((x1, y1), (x2, y2), layer=layer, datatype=datatype)
+                    gds_cell.add(rect)
+            else:
+                # Non-leaf cell - create reference
+                child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map)
+
+                if all(v is not None for v in child.pos_list):
+                    x1, y1, _, _ = child.pos_list
+                    x1 += offset_x
+                    y1 += offset_y
+
+                    # Create cell reference
+                    ref = gdstk.Reference(child_gds_cell, origin=(x1, y1))
+                    gds_cell.add(ref)
+
+        return gds_cell
+
+    @classmethod
+    def from_gds(cls, filename: str, cell_name: Optional[str] = None,
+                 layer_map: Optional[Dict[Tuple[int, int], str]] = None) -> 'Cell':
+        """
+        Import cell from GDS-II file format
+
+        Args:
+            filename: Input GDS file path
+            cell_name: Name of cell to import (if None, imports top cell)
+            layer_map: Optional mapping of (layer_number, datatype) to layer names
+                      Example: {(1, 0): 'metal1', (2, 0): 'poly'}
+
+        Returns:
+            Cell object with imported hierarchy
+        """
+        try:
+            import gdstk
+        except ImportError:
+            raise ImportError("gdstk library is required for GDS import. Install with: pip install gdstk")
+
+        # Default layer mapping (reverse of export mapping)
+        if layer_map is None:
+            layer_map = {
+                (1, 0): 'metal1',
+                (2, 0): 'metal2',
+                (3, 0): 'metal3',
+                (4, 0): 'metal4',
+                (5, 0): 'poly',
+                (6, 0): 'diff',
+                (7, 0): 'pdiff',
+                (8, 0): 'nwell',
+                (9, 0): 'contact',
+            }
+
+        # Read GDS file
+        lib = gdstk.read_gds(filename)
+
+        # Find the cell to import
+        if cell_name is None:
+            # Get top cells (cells that are not referenced by others)
+            all_cells = {cell.name: cell for cell in lib.cells}
+            referenced = set()
+            for cell in lib.cells:
+                for ref in cell.references:
+                    referenced.add(ref.cell.name)
+            top_cells = [name for name in all_cells if name not in referenced]
+
+            if not top_cells:
+                raise ValueError("No top-level cell found in GDS file")
+            cell_name = top_cells[0]
+
+        # Find the GDS cell
+        gds_cell = None
+        for cell in lib.cells:
+            if cell.name == cell_name:
+                gds_cell = cell
+                break
+
+        if gds_cell is None:
+            raise ValueError(f"Cell '{cell_name}' not found in GDS file")
+
+        # Convert GDS cell to Cell object
+        return cls._from_gds_cell(gds_cell, layer_map)
+
+    @classmethod
+    def _from_gds_cell(cls, gds_cell, layer_map: Dict) -> 'Cell':
+        """
+        Convert a GDS cell to a Cell object
+
+        Args:
+            gds_cell: gdstk Cell object
+            layer_map: Mapping of (layer, datatype) to layer names
+
+        Returns:
+            Cell object
+        """
+        cell = cls(gds_cell.name)
+
+        # Process polygons
+        for polygon in gds_cell.polygons:
+            layer_key = (polygon.layer, polygon.datatype)
+            layer_name = layer_map.get(layer_key, f'layer_{polygon.layer}')
+
+            # Get bounding box
+            bbox = polygon.bounding_box()
+            x1, y1 = bbox[0]
+            x2, y2 = bbox[1]
+
+            # Create leaf cell for this polygon
+            leaf = cls(f'{gds_cell.name}_{layer_name}_{len(cell.children)}', layer_name)
+            leaf.pos_list = [x1, y1, x2, y2]
+            cell.children.append(leaf)
+
+        # Process cell references
+        for ref in gds_cell.references:
+            child_cell = cls._from_gds_cell(ref.cell, layer_map)
+            x_offset, y_offset = ref.origin
+
+            # Adjust all positions by offset
+            cls._apply_offset_recursive(child_cell, x_offset, y_offset)
+
+            cell.children.append(child_cell)
+
+        return cell
+
+    @staticmethod
+    def _apply_offset_recursive(cell: 'Cell', dx: float, dy: float):
+        """
+        Recursively apply offset to cell and all children
+
+        Args:
+            cell: Cell to apply offset to
+            dx: X offset
+            dy: Y offset
+        """
+        if all(v is not None for v in cell.pos_list):
+            cell.pos_list = [
+                cell.pos_list[0] + dx,
+                cell.pos_list[1] + dy,
+                cell.pos_list[2] + dx,
+                cell.pos_list[3] + dy
+            ]
+
+        for child in cell.children:
+            Cell._apply_offset_recursive(child, dx, dy)
+
     def __repr__(self):
-        return f"Cell(name={self.name}, pos={self.pos_list}, children={len(self.children)})"
+        frozen_str = " [FROZEN]" if self._frozen else ""
+        return f"Cell(name={self.name}, pos={self.pos_list}, children={len(self.children)}{frozen_str})"
