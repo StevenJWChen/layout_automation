@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
 
+# Import constraint keyword expansion
+from layout_automation.constraint_keywords import expand_constraint_keywords
+
 # Optional OR-Tools import (may not be available or may have compatibility issues)
 try:
     from ortools.sat.python import cp_model
@@ -94,21 +97,37 @@ class Cell:
         """
         Add constraint between two cells, absolute constraint on one cell, or self-constraint
 
+        Supports constraint keywords for more readable code:
+            'center' → 'sx1+sx2=ox1+ox2, sy1+sy2=oy1+oy2'
+            'xcenter, swidth=10' → 'sx1+sx2=ox1+ox2, sx2-sx1=10'
+            'left, sheight=oheight' → 'sx1=ox1, sy2-sy1=oy2-oy1'
+
         Args:
             cell1: First cell (uses 's' or 'x' prefix in constraint string), or constraint string for self
             cell2: Second cell (uses 'o' prefix). If None, uses absolute constraint
-            constraint_str: Constraint string, e.g., 'sx1<ox2+3' or 'x2-x1=10'
+            constraint_str: Constraint string with optional keywords, e.g.:
+                           Full syntax: 'sx1<ox2+3' or 'x2-x1=10'
+                           With keywords: 'center' or 'xcenter, swidth=10'
                            If cell1 is a string, this is treated as constraint_str for self-constraint
 
         Usage modes:
             1. Self-constraint:
-               cell.constrain('x2-x1=100, y2-y1=50')  # Constrain cell's own bbox
+               cell.constrain('x2-x1=100, y2-y1=50')  # Full syntax
+               cell.constrain('width=100, height=50')  # With keywords
 
             2. Absolute constraint on child:
                parent.constrain(child, 'x1=10, y1=20')  # Position child absolutely
 
             3. Relative constraint between children:
-               parent.constrain(child1, 'sx2+10=ox1', child2)  # Position child1 relative to child2
+               parent.constrain(child1, 'sx2+10=ox1', child2)  # Full syntax
+               parent.constrain(child1, 'center', child2)      # With keywords
+
+        Keywords (see constraint_keywords.py):
+            center, xcenter, ycenter - centering
+            left, right, top, bottom - alignment
+            swidth, sheight, owidth, oheight - sizes
+            sx, sy, ox, oy - positions
+            width, height - self-constraint sizes
 
         Auto-add instances:
             If cell1 or cell2 are not in self.children, they will be automatically added.
@@ -118,8 +137,10 @@ class Cell:
             constraint_str = cell1
             cell1 = self
             cell2 = None
+            # Expand keywords in constraint string
+            expanded_constraint = expand_constraint_keywords(constraint_str)
             # For self-constraints, we don't auto-add since self is already the parent
-            self.constraints.append((cell1, constraint_str, cell2))
+            self.constraints.append((cell1, expanded_constraint, cell2))
             return self
 
         # Normal mode: cell1 is a Cell object
@@ -128,6 +149,9 @@ class Cell:
 
         if constraint_str is None:
             raise ValueError("constraint_str is required when cell1 is a Cell")
+
+        # Expand keywords in constraint string
+        expanded_constraint = expand_constraint_keywords(constraint_str)
 
         # Auto-add instances to children if not already present
         # This allows users to write: parent.constrain(child1, ..., child2)
@@ -138,7 +162,7 @@ class Cell:
         if cell2 is not None and cell2 != self and cell2 not in self.children:
             self.add_instance(cell2)
 
-        self.constraints.append((cell1, constraint_str, cell2))
+        self.constraints.append((cell1, expanded_constraint, cell2))
         return self
 
     def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
