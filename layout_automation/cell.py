@@ -120,7 +120,7 @@ class Cell:
             cell2 = None
             # For self-constraints, we don't auto-add since self is already the parent
             self.constraints.append((cell1, constraint_str, cell2))
-            return
+            return self
 
         # Normal mode: cell1 is a Cell object
         if not isinstance(cell1, Cell):
@@ -133,12 +133,13 @@ class Cell:
         # This allows users to write: parent.constrain(child1, ..., child2)
         # without explicitly calling parent.add_instance(child1) first
         if cell1 != self and cell1 not in self.children:
-            self.children.append(cell1)
+            self.add_instance(cell1)
 
         if cell2 is not None and cell2 != self and cell2 not in self.children:
-            self.children.append(cell2)
+            self.add_instance(cell2)
 
         self.constraints.append((cell1, constraint_str, cell2))
+        return self
 
     def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
         """
@@ -385,9 +386,9 @@ class Cell:
                     # y1 >= 0
                     model.Add(y1_var >= 0)
 
-                    # Width and height at least 10 units
-                    model.Add(x2_var - x1_var >= 10)
-                    model.Add(y2_var - y1_var >= 10)
+                    # Width and height at least 1 unit (minimum size)
+                    model.Add(x2_var - x1_var >= 1)
+                    model.Add(y2_var - y1_var >= 1)
 
         # Add parent-child bounding constraints
         self._add_parent_child_constraints_ortools(model, var_counter, var_objects)
@@ -765,12 +766,14 @@ class Cell:
 
     def freeze_layout(self) -> 'Cell':
         """
-        Freeze the current layout, making all positions immutable
+        Freeze the current layout as a fixed block
 
         When frozen:
-        - All child cell positions are locked
-        - Internal structure cannot be modified
-        - Can be efficiently reused as a fixed IP block
+        - Internal structure is LOCKED (size and child positions fixed)
+        - Can be used as fixed layout in parent cells
+        - Only the cell's position can be changed by parent constraints
+        - Solver fixes size: x2-x1=frozen_width, y2-y1=frozen_height
+        - Efficiently reusable as fixed IP block
         - Bounding box is cached for fast access
 
         Returns:
