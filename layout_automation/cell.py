@@ -443,10 +443,23 @@ class Cell:
         """
         Get all cells in the hierarchy (recursive)
 
+        Frozen cells' children are NOT included because:
+        - Frozen cells have fixed internal structure
+        - Their children's positions are already determined
+        - Solver only needs to position the frozen cell itself
+        - This saves significant solver effort
+
         Returns:
             List of all Cell instances including self
         """
         cells = [self]
+
+        # If this cell is frozen, don't include its children
+        # The frozen cell's internal structure is already fixed
+        if self._frozen:
+            return cells
+
+        # Otherwise, recursively collect children
         for child in self.children:
             cells.extend(child._get_all_cells())
         return cells
