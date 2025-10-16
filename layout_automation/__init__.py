@@ -4,66 +4,40 @@ Layout Automation Library
 
 A constraint-based IC layout automation toolkit supporting:
 - Hierarchical cell-based design
-- Constraint-based positioning and sizing
-- GDS-II file import/export
-- SkyWater PDK integration
-- DRC (Design Rule Check) and LVS (Layout vs Schematic) verification
+- Constraint-based positioning and sizing using OR-Tools
+- Constraint keyword expansion for readable layout code
 """
 
-# NOTE: cell.py import disabled due to OR-Tools segfault on Python 3.13
-# Try to import constraint-based cell (requires OR-Tools)
-# try:
-#     from .cell import Cell as ZCell
-#     HAS_ZCELL = True
-# except (ImportError, OSError, Exception):
-#     ZCell = None
-#     HAS_ZCELL = False
-ZCell = None
-HAS_ZCELL = False
+# Import the Cell class
+try:
+    from .cell import Cell
+    HAS_CELL = True
+except (ImportError, OSError, Exception) as e:
+    Cell = None
+    HAS_CELL = False
+    import warnings
+    warnings.warn(f"Could not import Cell class: {e}")
 
-from .gds_cell import Cell as GDSCell, Polygon, CellInstance
-from .units import Unit
-from .technology import Technology
-from .contact import Contact, ViaStack
-from .mosfet import MOSFET
-from .integer_optimizer import smart_integer_rounding
-from .array_gen import ArrayGenerator
-
-# Import submodules that users can access
-from . import drc
-from . import lvs
-from . import sky130_drc_rules
-from . import skywater_layer_map
-from . import layout_from_schematic
+# Import constraint keyword utilities
+try:
+    from .constraint_keywords import expand_constraint_keywords
+    HAS_CONSTRAINT_KEYWORDS = True
+except (ImportError, Exception) as e:
+    expand_constraint_keywords = None
+    HAS_CONSTRAINT_KEYWORDS = False
+    import warnings
+    warnings.warn(f"Could not import constraint_keywords: {e}")
 
 __version__ = "0.1.0"
 
 __all__ = [
     # Core classes
-    "ZCell",
-    "GDSCell",
-    "Polygon",
-    "CellInstance",
-
-    # Units
-    "Unit",
-
-    # Technology
-    "Technology",
-
-    # Primitives
-    "Contact",
-    "ViaStack",
-    "MOSFET",
+    "Cell",
 
     # Utilities
-    "smart_integer_rounding",
-    "ArrayGenerator",
+    "expand_constraint_keywords",
 
-    # Submodules
-    "drc",
-    "lvs",
-    "sky130_drc_rules",
-    "skywater_layer_map",
-    "layout_from_schematic",
+    # Flags
+    "HAS_CELL",
+    "HAS_CONSTRAINT_KEYWORDS",
 ]
