@@ -1,8 +1,43 @@
-# Frozen Layout Tests
+# Layout Automation Tests
 
-This directory contains comprehensive tests for the frozen layout feature.
+This directory contains comprehensive tests for the layout automation features.
 
 ## Test Files
+
+### GDS Import/Export Tests
+
+#### `test_gds_roundtrip.py`
+**Purpose**: Verify GDS import/export produces identical layouts
+
+**Tests**:
+- Export original layout to GDS
+- Import GDS back to Cell format
+- Re-export to GDS
+- Compare original and re-exported GDS files
+- Verify all positions, layers, and hierarchy preserved
+- Test import_gds_to_cell with constraints
+
+**Verification**:
+- Cell hierarchies are identical
+- Polygon positions match exactly
+- Layer assignments preserved
+- GDS files are byte-for-byte comparable
+
+**Runtime**: ~2-5 seconds
+
+**Usage**:
+```bash
+python examples/test_gds_roundtrip.py
+```
+
+**Output**: Creates GDS files in `demo_outputs/`:
+- `roundtrip_original.gds` - Original exported layout
+- `roundtrip_reexported.gds` - Re-exported after import
+- `roundtrip_constrained.gds` - Using import_gds_to_cell
+
+---
+
+## Frozen Layout Tests
 
 ### 1. `test_frozen_simple.py`
 **Purpose**: Quick verification of basic frozen functionality
