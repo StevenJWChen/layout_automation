@@ -5,6 +5,8 @@ Simple keyword replacement system for common constraint patterns.
 Allows writing: 'xcenter, swidth=10' instead of 'sx1+sx2=ox1+ox2, sx2-sx1=10'
 """
 
+import re
+
 # Keyword replacement dictionary
 # Maps keyword → actual constraint string
 CONSTRAINT_KEYWORDS = {
@@ -55,14 +57,15 @@ def expand_constraint_keywords(constraint_str):
     if not constraint_str:
         return constraint_str
 
-    # Start with original string
     result = constraint_str
 
     # Replace each keyword with its expansion
-    # Sort by length (longest first) to avoid partial replacements
+    # Use word boundaries (\b) to avoid replacing parts of other words (e.g., 'sx' in 'sx2')
+    # Sort by length (longest first) to avoid partial replacements (e.g., 'xcenter' before 'center')
     for keyword in sorted(CONSTRAINT_KEYWORDS.keys(), key=len, reverse=True):
         replacement = CONSTRAINT_KEYWORDS[keyword]
-        result = result.replace(keyword, replacement)
+        # The pattern looks for the keyword as a whole word.
+        result = re.sub(r'\b' + re.escape(keyword) + r'\b', replacement, result)
 
     return result
 

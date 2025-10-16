@@ -16,13 +16,23 @@ import numpy as np
 # Import constraint keyword expansion
 from layout_automation.constraint_keywords import expand_constraint_keywords
 
+import sys
+
 # Optional OR-Tools import (may not be available or may have compatibility issues)
-try:
-    from ortools.sat.python import cp_model
-    HAS_ORTOOLS = True
-except (ImportError, OSError, Exception):
-    HAS_ORTOOLS = False
-    cp_model = None
+# Add a check to prevent segfault on incompatible Python versions (e.g., 3.13+)
+HAS_ORTOOLS = False
+cp_model = None
+if sys.version_info.major == 3 and sys.version_info.minor < 13:
+    try:
+        from ortools.sat.python import cp_model
+        HAS_ORTOOLS = True
+    except (ImportError, OSError, Exception):
+        # This block will now handle standard import errors on compatible Python versions
+        HAS_ORTOOLS = False
+        cp_model = None
+else:
+    # For Python 3.13+, assume OR-Tools is not safely importable to avoid segfault
+    pass
 
 
 class Cell:
@@ -554,8 +564,8 @@ class Cell:
         all_cells = self._get_all_cells()
 
         for cell in all_cells:
-            # Only add bounding constraints for container cells (non-leaf with children)
-            if not cell.is_leaf and len(cell.children) > 0:
+            # Only add bounding constraints for non-frozen container cells
+            if not cell.is_leaf and len(cell.children) > 0 and not cell._frozen:
                 parent_x1_idx, parent_y1_idx, parent_x2_idx, parent_y2_idx = cell._get_var_indices(var_counter)
                 parent_x1 = var_objects[parent_x1_idx]
                 parent_y1 = var_objects[parent_y1_idx]
@@ -595,6 +605,10 @@ class Cell:
             var_counter: Variable counter dictionary
             var_objects: Dictionary mapping variable indices to OR-Tools variables
         """
+        # If cell is frozen, do not process its internal constraints
+        if self._frozen:
+            return
+
         # Add constraints from this cell
         for cell1, constraint_str, cell2 in self.constraints:
             parsed_constraints = self._parse_constraint(constraint_str, cell1, cell2, var_counter)
@@ -787,6 +801,9 @@ class Cell:
 
         # Reset variable indices for the new copy and all descendants
         self._reset_var_indices_recursive(new_cell)
+
+        # Reset position list for the new copy
+        new_cell.pos_list = [None, None, None, None]
 
         return new_cell
 

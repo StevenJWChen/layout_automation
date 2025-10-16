@@ -7,6 +7,10 @@ Tests the ability to freeze a cell's layout after solving,
 then use it as a fixed block in other layouts.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from layout_automation.gds_cell import Cell, Polygon, CellInstance
 
 print("="*70)
