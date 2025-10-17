@@ -66,6 +66,8 @@ class Cell:
         self._var_indices = None  # Cache for variable indices in optimization vector
         self._frozen = False  # Track if layout is frozen
         self._frozen_bbox = None  # Cache bbox when frozen
+        self._fixed = False  # Track if layout is fixed (can reposition while maintaining internal structure)
+        self._fixed_offsets = {}  # Store relative offsets of children when fixed
 
         # Parse arguments
         for arg in args:
@@ -462,6 +464,9 @@ class Cell:
 
             # Update parent bounds to tightly fit children
             self._update_parent_bounds()
+
+            # Update fixed cell positions if any cells are fixed
+            self._update_all_fixed_positions()
 
             if status == cp_model.OPTIMAL:
                 print(f"Optimal solution found in {solver.WallTime():.2f}s")
@@ -895,6 +900,148 @@ class Cell:
             return tuple(self.pos_list)
 
         return None
+
+    def fix_layout(self) -> 'Cell':
+        """
+        Fix the current layout, storing relative positions of all children.
+
+        After fixing:
+        - Internal structure relationships are PRESERVED
+        - The cell can be repositioned by constraints
+        - When the cell moves, ALL internal polygons automatically update
+        - Children maintain their relative offsets from the parent's origin
+
+        This is different from freeze_layout():
+        - freeze: treats cell as black box, internal structure locked
+        - fix: allows repositioning while updating all internal elements
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            >>> block = Cell('block')
+            >>> # ... add children and solve ...
+            >>> block.fix_layout()  # Fix the internal structure
+            >>> parent.constrain(block, 'x1=100, y1=50')  # Reposition
+            >>> parent.solver()  # All internal polygons update to new position
+        """
+        if self._fixed:
+            return self  # Already fixed
+
+        # Solve if not yet solved
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                raise RuntimeError(f"Cannot fix cell '{self.name}': solver failed")
+
+        # Mark as fixed
+        self._fixed = True
+
+        # Store the original bbox
+        parent_x1, parent_y1, parent_x2, parent_y2 = self.pos_list
+
+        # Recursively store relative offsets for all children
+        def store_offsets(cell, parent_origin):
+            """Recursively store relative offsets for all descendants"""
+            px1, py1 = parent_origin
+
+            for child in cell.children:
+                if all(v is not None for v in child.pos_list):
+                    # Store offset relative to parent's origin (x1, y1)
+                    child_x1, child_y1, child_x2, child_y2 = child.pos_list
+                    offset = (
+                        child_x1 - px1,  # dx1
+                        child_y1 - py1,  # dy1
+                        child_x2 - px1,  # dx2
+                        child_y2 - py1   # dy2
+                    )
+                    cell._fixed_offsets[child.name] = offset
+
+                    # Recursively process grandchildren
+                    if not child.is_leaf and len(child.children) > 0:
+                        store_offsets(child, (child_x1, child_y1))
+
+        store_offsets(self, (parent_x1, parent_y1))
+
+        print(f"✓ Cell '{self.name}' fixed with {len(self._fixed_offsets)} relative offsets stored")
+        return self
+
+    def unfix_layout(self) -> 'Cell':
+        """
+        Unfix the layout, removing relative offset constraints
+
+        Returns:
+            Self for method chaining
+        """
+        self._fixed = False
+        self._fixed_offsets = {}
+
+        # Recursively unfix children
+        for child in self.children:
+            if not child.is_leaf:
+                child.unfix_layout()
+
+        return self
+
+    def is_fixed(self) -> bool:
+        """
+        Check if this cell's layout is fixed
+
+        Returns:
+            True if fixed, False otherwise
+        """
+        return self._fixed
+
+    def update_fixed_positions(self):
+        """
+        Update all child positions based on stored offsets after parent repositioning.
+
+        This is called after the parent cell's position changes to propagate
+        the position update to all internal elements.
+        """
+        if not self._fixed or len(self._fixed_offsets) == 0:
+            return
+
+        # Get current parent position
+        if any(v is None for v in self.pos_list):
+            return
+
+        parent_x1, parent_y1, parent_x2, parent_y2 = self.pos_list
+
+        # Update all children positions based on stored offsets
+        def update_children(cell, parent_origin):
+            """Recursively update child positions"""
+            px1, py1 = parent_origin
+
+            for child in cell.children:
+                if child.name in cell._fixed_offsets:
+                    dx1, dy1, dx2, dy2 = cell._fixed_offsets[child.name]
+                    child.pos_list = [
+                        px1 + dx1,
+                        py1 + dy1,
+                        px1 + dx2,
+                        py1 + dy2
+                    ]
+
+                    # Recursively update grandchildren
+                    if not child.is_leaf and len(child.children) > 0:
+                        child.update_fixed_positions()
+
+        update_children(self, (parent_x1, parent_y1))
+
+    def _update_all_fixed_positions(self):
+        """
+        Recursively update all fixed cells in the hierarchy after solving.
+
+        This is called by the solver after positions are determined.
+        """
+        # Update this cell if it's fixed
+        if self._fixed:
+            self.update_fixed_positions()
+
+        # Recursively update children
+        for child in self.children:
+            if not child.is_leaf:
+                child._update_all_fixed_positions()
 
     def export_gds(self, filename: str, unit: float = 1e-6, precision: float = 1e-9,
                    layer_map: Dict[str, Tuple[int, int]] = None):
