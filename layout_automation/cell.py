@@ -399,6 +399,15 @@ class Cell:
                 # Fix the size (but allow position to vary)
                 model.Add(x2_var - x1_var == width)
                 model.Add(y2_var - y1_var == height)
+            # Check if cell is fixed - if so, fix its size based on stored offsets
+            elif cell._fixed and len(cell._fixed_offsets) > 0:
+                # Calculate width and height from the maximum offsets
+                max_x_offset = max(offset[2] for offset in cell._fixed_offsets.values())  # dx2
+                max_y_offset = max(offset[3] for offset in cell._fixed_offsets.values())  # dy2
+
+                # Fix the size (but allow position to vary)
+                model.Add(x2_var - x1_var == max_x_offset)
+                model.Add(y2_var - y1_var == max_y_offset)
             else:
                 # x2 > x1 (at least 1 unit larger)
                 model.Add(x2_var >= x1_var + 1)
@@ -493,9 +502,10 @@ class Cell:
         """
         cells = [self]
 
-        # If this cell is frozen, don't include its children
-        # The frozen cell's internal structure is already fixed
-        if self._frozen:
+        # If this cell is frozen or fixed, don't include its children in solver
+        # Frozen: internal structure is locked
+        # Fixed: will update children via offsets after solving
+        if self._frozen or self._fixed:
             return cells
 
         # Otherwise, recursively collect children
@@ -569,8 +579,9 @@ class Cell:
         all_cells = self._get_all_cells()
 
         for cell in all_cells:
-            # Only add bounding constraints for non-frozen container cells
-            if not cell.is_leaf and len(cell.children) > 0 and not cell._frozen:
+            # Only add bounding constraints for non-frozen and non-fixed container cells
+            # For frozen/fixed cells, size is constrained elsewhere
+            if not cell.is_leaf and len(cell.children) > 0 and not cell._frozen and not cell._fixed:
                 parent_x1_idx, parent_y1_idx, parent_x2_idx, parent_y2_idx = cell._get_var_indices(var_counter)
                 parent_x1 = var_objects[parent_x1_idx]
                 parent_y1 = var_objects[parent_y1_idx]
@@ -610,8 +621,10 @@ class Cell:
             var_counter: Variable counter dictionary
             var_objects: Dictionary mapping variable indices to OR-Tools variables
         """
-        # If cell is frozen, do not process its internal constraints
-        if self._frozen:
+        # If cell is frozen or fixed, do not process its internal constraints
+        # Frozen: treats cell as black box
+        # Fixed: will update children positions after solving via offsets
+        if self._frozen or self._fixed:
             return
 
         # Add constraints from this cell
@@ -807,8 +820,16 @@ class Cell:
         # Reset variable indices for the new copy and all descendants
         self._reset_var_indices_recursive(new_cell)
 
-        # Reset position list for the new copy
-        new_cell.pos_list = [None, None, None, None]
+        # For fixed cells, we need to reset ALL positions (including children)
+        # Otherwise there's a mismatch: parent has None but children have positions
+        if new_cell._fixed:
+            # Reset parent position
+            new_cell.pos_list = [None, None, None, None]
+            # Reset all children positions recursively
+            self._reset_positions_recursive(new_cell)
+        else:
+            # Reset position list for the new copy
+            new_cell.pos_list = [None, None, None, None]
 
         return new_cell
 
@@ -822,6 +843,18 @@ class Cell:
         cell._var_indices = None
         for child in cell.children:
             self._reset_var_indices_recursive(child)
+
+    def _reset_positions_recursive(self, cell: 'Cell'):
+        """
+        Recursively reset positions for a cell and all its descendants
+
+        Args:
+            cell: Cell to reset positions for
+        """
+        for child in cell.children:
+            child.pos_list = [None, None, None, None]
+            if not child.is_leaf:
+                self._reset_positions_recursive(child)
 
     def freeze_layout(self) -> 'Cell':
         """
@@ -939,7 +972,7 @@ class Cell:
         # Store the original bbox
         parent_x1, parent_y1, parent_x2, parent_y2 = self.pos_list
 
-        # Recursively store relative offsets for all children
+        # Recursively store relative offsets for all children AND mark them as needing updates
         def store_offsets(cell, parent_origin):
             """Recursively store relative offsets for all descendants"""
             px1, py1 = parent_origin
@@ -956,9 +989,11 @@ class Cell:
                     )
                     cell._fixed_offsets[child.name] = offset
 
-                    # Recursively process grandchildren
-                    if not child.is_leaf and len(child.children) > 0:
-                        store_offsets(child, (child_x1, child_y1))
+                    # Also recursively fix the child so it can update its own children
+                    if not child.is_leaf and len(child.children) > 0 and not child._fixed:
+                        # Temporarily mark child as having been processed
+                        child_parent_origin = (child_x1, child_y1)
+                        store_offsets(child, child_parent_origin)
 
         store_offsets(self, (parent_x1, parent_y1))
 
@@ -1023,8 +1058,14 @@ class Cell:
                     ]
 
                     # Recursively update grandchildren
+                    # If child is fixed, use its update method
+                    # Otherwise, recursively update all its descendants
                     if not child.is_leaf and len(child.children) > 0:
-                        child.update_fixed_positions()
+                        if child._fixed:
+                            child.update_fixed_positions()
+                        else:
+                            # Not fixed, but still need to update grandchildren
+                            update_children(child, (child.pos_list[0], child.pos_list[1]))
 
         update_children(self, (parent_x1, parent_y1))
 
@@ -1042,6 +1083,51 @@ class Cell:
         for child in self.children:
             if not child.is_leaf:
                 child._update_all_fixed_positions()
+
+    def set_position(self, x1: float, y1: float):
+        """
+        Manually set the position of a fixed layout cell.
+
+        This method is specifically for fixed layout cells. When you set the position,
+        all internal polygons automatically update based on stored relative offsets.
+
+        Args:
+            x1: New x1 coordinate (left edge)
+            y1: New y1 coordinate (bottom edge)
+
+        Example:
+            >>> block.solver()          # Solve the layout
+            >>> block.fix_layout()      # Fix the layout
+            >>> block.set_position(100, 50)  # Move to (100, 50)
+            # All internal polygons automatically update!
+
+        Note:
+            - This method works best with fixed layout cells
+            - If the cell is not fixed, it just sets the position without updating children
+            - The cell's width and height are preserved
+        """
+        if not self._fixed:
+            print(f"Warning: Cell '{self.name}' is not fixed. Consider using fix_layout() first.")
+
+        # Calculate current width and height
+        if all(v is not None for v in self.pos_list):
+            width = self.pos_list[2] - self.pos_list[0]
+            height = self.pos_list[3] - self.pos_list[1]
+        else:
+            # If not yet positioned, use offsets to determine size
+            if self._fixed and len(self._fixed_offsets) > 0:
+                width = max(offset[2] for offset in self._fixed_offsets.values())
+                height = max(offset[3] for offset in self._fixed_offsets.values())
+            else:
+                print(f"Warning: Cannot determine size for cell '{self.name}'")
+                return
+
+        # Set new position
+        self.pos_list = [x1, y1, x1 + width, y1 + height]
+
+        # Update children positions if fixed
+        if self._fixed:
+            self.update_fixed_positions()
 
     def export_gds(self, filename: str, unit: float = 1e-6, precision: float = 1e-9,
                    layer_map: Dict[str, Tuple[int, int]] = None):
