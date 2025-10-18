@@ -10,6 +10,7 @@ The `fix_layout` feature allows cells to be solved once, then copied and reposit
 2. **test_fix_vs_freeze.py** - Comparison with freeze_layout
 3. **test_fix_vs_original_performance.py** - Performance comparison
 4. **test_array_of_arrays_verification.py** - 3D array structure verification
+5. **test_fix_layout_constraints.py** - Constraint-based positioning tests
 
 ## Test Results
 
@@ -152,6 +153,8 @@ Difference: [0, 0, 0, 0] - EXACT MATCH
 
 ## Usage Example
 
+### Manual Positioning
+
 ```python
 from layout_automation.cell import Cell
 
@@ -174,14 +177,40 @@ copy2.set_position(100, 0)    # All internals update automatically
 copy3.set_position(0, 100)    # All internals update automatically
 ```
 
+### Constraint-Based Positioning
+
+Fixed layout cells can also be positioned using constraints:
+
+```python
+# Create and fix a cell
+template = Cell('template')
+# ... add children and constraints ...
+template.solver()
+template.fix_layout()
+
+# Position using constraints in parent cell
+top = Cell('top')
+cell1 = template.copy('cell1')
+cell2 = template.copy('cell2')
+top.add_instance([cell1, cell2])
+
+# Use constraints to position fixed cells
+top.constrain(cell1, 'x1=0, y1=0')           # Absolute position
+top.constrain(cell2, 'sx1=ox2+10', cell1)     # Relative to cell1
+top.solver()  # Solver positions cell1 and cell2 correctly
+
+# All internal polygons update automatically!
+```
+
 ## Conclusion
 
 ### ✓ Verified Features
 1. **Accuracy:** All positions match exactly (100% match rate)
 2. **Performance:** 2-500x faster depending on array size
 3. **Scalability:** Larger arrays show more dramatic speedup
-4. **Functionality:** Copy, manual positioning, and hierarchy all work correctly
+4. **Functionality:** Copy, manual positioning, constraint-based positioning, and hierarchy all work correctly
 5. **Robustness:** Deep nesting and complex structures supported
+6. **Constraint Support:** Fixed cells can be positioned using solver constraints, not just manual positioning
 
 ### ✓ Production Ready
 The fix_layout feature is:
@@ -195,6 +224,50 @@ The fix_layout feature is:
 - Standard cell libraries with repositioning needs
 - Large-scale layout generation
 - Any scenario requiring multiple copies of the same cell
+
+## Recent Bug Fixes
+
+### Fixed: Constraint-based positioning for fixed cells (2025-10-17)
+
+**Issue:** Fixed cells positioned via solver constraints were not maintaining their correct positions. After the solver determined the correct position, `_update_parent_bounds()` would recalculate the fixed cell's bounds from its children's stale positions, overwriting the solver's correct result.
+
+**Root Cause:** Fixed cells' children maintain their positions from when the cell was originally solved. When `_update_parent_bounds()` ran, it would calculate the bounding box from these stale child positions instead of using the position the solver just determined.
+
+**Fix:** Modified `_update_parent_bounds()` to skip fixed and frozen cells. These cells have their positions determined by:
+- **Frozen cells:** Solver positions the cell as a whole (black box)
+- **Fixed cells:** Solver positions the cell, then `update_fixed_positions()` updates children based on offsets
+
+**Tests Added:**
+- `test_fix_layout_constraints.py` - Comprehensive constraint positioning tests including:
+  - Relative positioning between fixed cells
+  - Absolute positioning of fixed cells
+  - Multiple fixed cells in sequence
+  - Fixed cells in hierarchical structures
+
+All existing tests continue to pass with 100% position accuracy and 2-500x performance improvement.
+
+### Fixed: Constraint operator bug (2025-10-17)
+
+**Issue:** Strict inequality operators `<` and `>` were being treated as non-strict (`<=` and `>=`). For example, `x1 > 10` would allow `x1 = 10`, which violates the constraint.
+
+**Root Cause:** The operator checking used `if operator in ['<', '<=']` which would apply `<=` for both `<` and `<=`. Same issue with `>` and `>=`.
+
+**Fix:** Changed to exact operator matching:
+```python
+if operator == '<':
+    model.Add(left_linear_expr < right_linear_expr)
+elif operator == '<=':
+    model.Add(left_linear_expr <= right_linear_expr)
+# ... (similar for >, >=, =)
+```
+
+**Tests Added:**
+- `test_operator_correctness.py` - Tests all operators including boundary conditions
+- Verifies strict vs non-strict inequalities work correctly
+
+### Enhanced: Draw resolution (2025-10-17)
+
+**Change:** Increased figure size from `(3, 3)` to `(10, 10)` inches with explicit `dpi=100` for much better visibility and detail in layout visualizations.
 
 ---
 

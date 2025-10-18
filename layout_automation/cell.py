@@ -16,6 +16,9 @@ import numpy as np
 # Import constraint keyword expansion
 from layout_automation.constraint_keywords import expand_constraint_keywords
 
+# Import style configuration
+from layout_automation.style_config import get_style_config
+
 import sys
 
 # Optional OR-Tools import (may not be available or may have compatibility issues)
@@ -525,6 +528,10 @@ class Cell:
         cells_by_depth = sorted(all_cells, key=lambda c: self._get_cell_depth(c), reverse=True)
 
         for cell in cells_by_depth:
+            # Skip fixed/frozen cells - their bounds are determined by solver or offsets
+            if cell._fixed or cell._frozen:
+                continue
+
             if not cell.is_leaf and len(cell.children) > 0:
                 # Calculate bounding box from children
                 child_x1_vals = []
@@ -547,6 +554,17 @@ class Cell:
                         max(child_x2_vals),
                         max(child_y2_vals)
                     ]
+
+    def get_bounds(self):
+        """
+        Get the bounding box of this cell
+
+        Returns:
+            Tuple of (x1, y1, x2, y2) or None if position not yet determined
+        """
+        if all(v is not None for v in self.pos_list):
+            return tuple(self.pos_list)
+        return None
 
     def _get_cell_depth(self, cell: 'Cell') -> int:
         """
@@ -637,9 +655,13 @@ class Cell:
                 right_linear_expr = self._build_ortools_linear_expr(right_expr, var_map, var_objects)
 
                 # Add constraint based on operator
-                if operator in ['<', '<=']:
+                if operator == '<':
+                    model.Add(left_linear_expr < right_linear_expr)
+                elif operator == '<=':
                     model.Add(left_linear_expr <= right_linear_expr)
-                elif operator in ['>', '>=']:
+                elif operator == '>':
+                    model.Add(left_linear_expr > right_linear_expr)
+                elif operator == '>=':
                     model.Add(left_linear_expr >= right_linear_expr)
                 elif operator == '=':
                     model.Add(left_linear_expr == right_linear_expr)
@@ -695,7 +717,7 @@ class Cell:
                 return
 
         if ax is None:
-            fig, ax = plt.subplots(figsize=(3, 3))
+            fig, ax = plt.subplots(figsize=(10, 10), dpi=100)
         else:
             fig = ax.figure
 
@@ -716,7 +738,7 @@ class Cell:
 
     def _draw_recursive(self, ax, level: int = 0):
         """
-        Recursively draw all cells
+        Recursively draw all cells with customizable styles
 
         Args:
             ax: Matplotlib axes object
@@ -732,23 +754,23 @@ class Cell:
             width = x2 - x1
             height = y2 - y1
 
-            if self.is_leaf:
-                # Leaf cells: solid filled rectangles with layer colors
-                layer_colors = {
-                    'metal1': 'blue',
-                    'metal2': 'red',
-                    'metal3': 'green',
-                    'metal4': 'orange',
-                    'poly': 'purple',
-                    'diff': 'brown',
-                }
-                color = layer_colors.get(self.layer_name, 'gray')
+            # Get style configuration
+            style_config = get_style_config()
 
-                rect = patches.Rectangle(
-                    (x1, y1), width, height,
-                    linewidth=2, edgecolor='black', facecolor=color, alpha=0.6
+            if self.is_leaf:
+                # Leaf cells: solid filled shapes with layer styles
+                layer_style = style_config.get_layer_style(self.layer_name)
+
+                # Create shape based on style
+                patch = self._create_shape_patch(
+                    x1, y1, width, height,
+                    shape=layer_style.shape,
+                    facecolor=layer_style.color,
+                    edgecolor=layer_style.edge_color,
+                    linewidth=layer_style.edge_width,
+                    alpha=layer_style.alpha
                 )
-                ax.add_patch(rect)
+                ax.add_patch(patch)
 
                 # Add label
                 cx = (x1 + x2) / 2
@@ -757,21 +779,73 @@ class Cell:
                 ax.text(cx, cy, label, ha='center', va='center', fontsize=8, weight='bold')
 
             else:
-                # Container cells: dotted/dashed outline, no fill
-                colors = ['darkblue', 'darkred', 'darkgreen', 'darkorange', 'darkviolet']
-                edge_color = colors[level % len(colors)]
+                # Container cells: outline only, no fill
+                edge_color = style_config.get_container_color(level)
+                container_style = style_config.container_style
 
-                rect = patches.Rectangle(
-                    (x1, y1), width, height,
-                    linewidth=2, edgecolor=edge_color, facecolor='none',
-                    linestyle='--', alpha=0.8
+                # Create shape based on style
+                patch = self._create_shape_patch(
+                    x1, y1, width, height,
+                    shape=container_style.shape,
+                    facecolor='none',
+                    edgecolor=edge_color,
+                    linewidth=container_style.edge_width,
+                    linestyle=container_style.linestyle,
+                    alpha=container_style.alpha
                 )
-                ax.add_patch(rect)
+                ax.add_patch(patch)
 
                 # Add label at top-left corner (outside the box)
                 label = f"{self.name}"
                 ax.text(x1, y2 + 1, label, ha='left', va='bottom', fontsize=9,
                        weight='bold', color=edge_color, style='italic')
+
+    def _create_shape_patch(self, x1, y1, width, height, shape='rectangle', **kwargs):
+        """
+        Create a matplotlib patch for the specified shape
+
+        Args:
+            x1, y1: Bottom-left corner
+            width, height: Dimensions
+            shape: Shape type ('rectangle', 'rounded', 'circle', 'octagon', 'ellipse')
+            **kwargs: Additional patch parameters (facecolor, edgecolor, etc.)
+
+        Returns:
+            matplotlib.patches.Patch
+        """
+        if shape == 'rounded':
+            # Rounded rectangle
+            return patches.FancyBboxPatch(
+                (x1, y1), width, height,
+                boxstyle=f"round,pad=0,rounding_size={min(width, height) * 0.1}",
+                **kwargs
+            )
+        elif shape == 'circle':
+            # Circle (use the center and radius)
+            cx = x1 + width / 2
+            cy = y1 + height / 2
+            radius = min(width, height) / 2
+            return patches.Circle((cx, cy), radius, **kwargs)
+        elif shape == 'ellipse':
+            # Ellipse
+            cx = x1 + width / 2
+            cy = y1 + height / 2
+            return patches.Ellipse((cx, cy), width, height, **kwargs)
+        elif shape == 'octagon':
+            # Regular octagon inscribed in the rectangle
+            cx = x1 + width / 2
+            cy = y1 + height / 2
+            # Create octagon vertices
+            import math
+            vertices = []
+            for i in range(8):
+                angle = i * math.pi / 4
+                vx = cx + (width / 2) * math.cos(angle)
+                vy = cy + (height / 2) * math.sin(angle)
+                vertices.append([vx, vy])
+            return patches.Polygon(vertices, **kwargs)
+        else:  # 'rectangle' (default)
+            return patches.Rectangle((x1, y1), width, height, **kwargs)
 
     # Class variable to track copy counts for automatic naming
     _copy_counts = {}
@@ -1130,7 +1204,8 @@ class Cell:
             self.update_fixed_positions()
 
     def export_gds(self, filename: str, unit: float = 1e-6, precision: float = 1e-9,
-                   layer_map: Dict[str, Tuple[int, int]] = None):
+                   layer_map: Dict[str, Tuple[int, int]] = None,
+                   use_tech_file: bool = True):
         """
         Export cell hierarchy to GDS-II file format
 
@@ -1140,25 +1215,54 @@ class Cell:
             precision: Precision in meters (default 1e-9 = 1 nanometer)
             layer_map: Optional mapping of layer names to (layer_number, datatype) tuples
                       Example: {'metal1': (1, 0), 'poly': (2, 0)}
+                      If None and use_tech_file=True, uses tech file mapping
+            use_tech_file: If True, use technology file for layer mapping (default True)
         """
         try:
             import gdstk
         except ImportError:
             raise ImportError("gdstk library is required for GDS export. Install with: pip install gdstk")
 
-        # Default layer mapping
+        # Get layer mapping
         if layer_map is None:
-            layer_map = {
-                'metal1': (1, 0),
-                'metal2': (2, 0),
-                'metal3': (3, 0),
-                'metal4': (4, 0),
-                'poly': (5, 0),
-                'diff': (6, 0),
-                'pdiff': (7, 0),
-                'nwell': (8, 0),
-                'contact': (9, 0),
-            }
+            if use_tech_file:
+                # Try to use tech file
+                try:
+                    from layout_automation.tech_file import get_tech_file
+                    tech = get_tech_file()
+                    layer_map = {}
+                    for (name, purpose), mapping in tech.layers.items():
+                        if purpose == 'drawing':  # Only use drawing layers for export
+                            layer_map[name] = (mapping.gds_layer, mapping.gds_datatype)
+                    if layer_map:
+                        print(f"Using tech file layer mapping ({len(layer_map)} layers)")
+                except Exception as e:
+                    print(f"Warning: Could not load tech file, using defaults: {e}")
+                    layer_map = None
+
+            # Default layer mapping if tech file not available
+            if not layer_map:
+                layer_map = {
+                    'metal1': (30, 0),
+                    'metal2': (50, 0),
+                    'metal3': (70, 0),
+                    'metal4': (90, 0),
+                    'metal5': (110, 0),
+                    'metal6': (130, 0),
+                    'poly': (10, 0),
+                    'diff': (3, 0),
+                    'ndiff': (3, 0),
+                    'pdiff': (4, 0),
+                    'nwell': (1, 0),
+                    'pwell': (2, 0),
+                    'contact': (20, 0),
+                    'via': (40, 0),
+                    'via1': (40, 0),
+                    'via2': (60, 0),
+                    'via3': (80, 0),
+                    'via4': (100, 0),
+                    'via5': (120, 0),
+                }
 
         # Create GDS library
         lib = gdstk.Library(name="LAYOUT", unit=unit, precision=precision)
@@ -1196,20 +1300,31 @@ class Cell:
         # Process children
         for child in self.children:
             if child.is_leaf:
-                # Leaf cell - create rectangle on specified layer
+                # Leaf cell - create as a separate GDS cell to preserve name
                 if all(v is not None for v in child.pos_list):
-                    x1, y1, x2, y2 = child.pos_list
+                    # Create or get the leaf's GDS cell
+                    if child.name not in gds_cells_dict:
+                        leaf_gds_cell = lib.new_cell(child.name)
+                        gds_cells_dict[child.name] = leaf_gds_cell
+
+                        # Get layer and datatype
+                        layer, datatype = layer_map.get(child.layer_name, (0, 0))
+
+                        # Add rectangle to the leaf cell at origin
+                        x1, y1, x2, y2 = child.pos_list
+                        width = x2 - x1
+                        height = y2 - y1
+                        rect = gdstk.rectangle((0, 0), (width, height), layer=layer, datatype=datatype)
+                        leaf_gds_cell.add(rect)
+                    else:
+                        leaf_gds_cell = gds_cells_dict[child.name]
+
+                    # Create reference to the leaf cell at its position
+                    x1, y1, _, _ = child.pos_list
                     x1 += offset_x
                     y1 += offset_y
-                    x2 += offset_x
-                    y2 += offset_y
-
-                    # Get layer and datatype
-                    layer, datatype = layer_map.get(child.layer_name, (0, 0))
-
-                    # Create rectangle polygon
-                    rect = gdstk.rectangle((x1, y1), (x2, y2), layer=layer, datatype=datatype)
-                    gds_cell.add(rect)
+                    ref = gdstk.Reference(leaf_gds_cell, origin=(x1, y1))
+                    gds_cell.add(ref)
             else:
                 # Non-leaf cell - create reference
                 child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map)
@@ -1227,7 +1342,8 @@ class Cell:
 
     @classmethod
     def from_gds(cls, filename: str, cell_name: Optional[str] = None,
-                 layer_map: Optional[Dict[Tuple[int, int], str]] = None) -> 'Cell':
+                 layer_map: Optional[Dict[Tuple[int, int], str]] = None,
+                 use_tech_file: bool = True) -> 'Cell':
         """
         Import cell from GDS-II file format
 
@@ -1236,6 +1352,7 @@ class Cell:
             cell_name: Name of cell to import (if None, imports top cell)
             layer_map: Optional mapping of (layer_number, datatype) to layer names
                       Example: {(1, 0): 'metal1', (2, 0): 'poly'}
+            use_tech_file: If True, use technology file for layer mapping
 
         Returns:
             Cell object with imported hierarchy
@@ -1245,18 +1362,43 @@ class Cell:
         except ImportError:
             raise ImportError("gdstk library is required for GDS import. Install with: pip install gdstk")
 
-        # Default layer mapping (reverse of export mapping)
+        # Get layer mapping from tech file if available
+        if layer_map is None:
+            if use_tech_file:
+                try:
+                    from layout_automation.tech_file import get_tech_file
+                    tech = get_tech_file()
+                    layer_map = {}
+                    # Build reverse mapping: (gds_layer, gds_datatype) -> layer_name
+                    for (name, purpose), mapping in tech.layers.items():
+                        if purpose == 'drawing':
+                            layer_map[(mapping.gds_layer, mapping.gds_datatype)] = name
+                    if layer_map:
+                        print(f"Using tech file for GDS import ({len(layer_map)} layers)")
+                except Exception as e:
+                    print(f"Warning: Could not load tech file, using defaults: {e}")
+                    layer_map = None
+
+        # Default layer mapping (reverse of export mapping) if tech file not available
         if layer_map is None:
             layer_map = {
-                (1, 0): 'metal1',
-                (2, 0): 'metal2',
-                (3, 0): 'metal3',
-                (4, 0): 'metal4',
-                (5, 0): 'poly',
-                (6, 0): 'diff',
-                (7, 0): 'pdiff',
-                (8, 0): 'nwell',
-                (9, 0): 'contact',
+                (30, 0): 'metal1',
+                (50, 0): 'metal2',
+                (70, 0): 'metal3',
+                (90, 0): 'metal4',
+                (110, 0): 'metal5',
+                (130, 0): 'metal6',
+                (10, 0): 'poly',
+                (3, 0): 'ndiff',
+                (4, 0): 'pdiff',
+                (1, 0): 'nwell',
+                (2, 0): 'pwell',
+                (20, 0): 'contact',
+                (40, 0): 'via1',
+                (60, 0): 'via2',
+                (80, 0): 'via3',
+                (100, 0): 'via4',
+                (120, 0): 'via5',
             }
 
         # Read GDS file
@@ -1299,8 +1441,30 @@ class Cell:
             layer_map: Mapping of (layer, datatype) to layer names
 
         Returns:
-            Cell object
+            Cell object with fixed layout (children are frozen, can only be repositioned)
         """
+        # Special case: If this cell has exactly 1 polygon and no references,
+        # and the polygon is at origin, treat it as a leaf cell
+        # (This preserves the structure of exported leaf cells)
+        if len(gds_cell.polygons) == 1 and len(gds_cell.references) == 0:
+            polygon = gds_cell.polygons[0]
+            bbox = polygon.bounding_box()
+            x1, y1 = bbox[0]
+            x2, y2 = bbox[1]
+
+            # Check if polygon is at origin (within tolerance)
+            if abs(x1) < 1e-6 and abs(y1) < 1e-6:
+                # This is a simple leaf cell - preserve as leaf
+                layer_key = (polygon.layer, polygon.datatype)
+                layer_name = layer_map.get(layer_key, f'layer_{polygon.layer}')
+
+                # Create as leaf cell with layer name
+                leaf_cell = cls(gds_cell.name, layer_name)
+                # Position will be set by parent's reference origin
+                leaf_cell.pos_list = [0, 0, int(round(x2 - x1)), int(round(y2 - y1))]
+                return leaf_cell
+
+        # Normal case: cell with multiple polygons or references
         cell = cls(gds_cell.name)
 
         # Process polygons
@@ -1314,9 +1478,11 @@ class Cell:
             x2, y2 = bbox[1]
 
             # Create leaf cell for this polygon
+            # Convert to int to avoid float issues in solver
             leaf = cls(f'{gds_cell.name}_{layer_name}_{len(cell.children)}', layer_name)
-            leaf.pos_list = [x1, y1, x2, y2]
+            leaf.pos_list = [int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2))]
             cell.children.append(leaf)
+            cell.child_dict[leaf.name] = leaf
 
         # Process cell references
         for ref in gds_cell.references:
@@ -1327,6 +1493,33 @@ class Cell:
             cls._apply_offset_recursive(child_cell, x_offset, y_offset)
 
             cell.children.append(child_cell)
+            cell.child_dict[child_cell.name] = child_cell
+
+        # Calculate bounding box for the cell from its children
+        if cell.children:
+            x1_vals = []
+            y1_vals = []
+            x2_vals = []
+            y2_vals = []
+
+            for child in cell.children:
+                if all(v is not None for v in child.pos_list):
+                    x1_vals.append(child.pos_list[0])
+                    y1_vals.append(child.pos_list[1])
+                    x2_vals.append(child.pos_list[2])
+                    y2_vals.append(child.pos_list[3])
+
+            if x1_vals:
+                # Set cell's pos_list to the bounding box (convert to int)
+                cell.pos_list = [
+                    int(round(min(x1_vals))),
+                    int(round(min(y1_vals))),
+                    int(round(max(x2_vals))),
+                    int(round(max(y2_vals)))
+                ]
+
+        # Fix the layout so it can only be repositioned, not resized
+        cell.fix_layout()
 
         return cell
 
@@ -1341,11 +1534,12 @@ class Cell:
             dy: Y offset
         """
         if all(v is not None for v in cell.pos_list):
+            # Convert to int to avoid float issues in solver
             cell.pos_list = [
-                cell.pos_list[0] + dx,
-                cell.pos_list[1] + dy,
-                cell.pos_list[2] + dx,
-                cell.pos_list[3] + dy
+                int(round(cell.pos_list[0] + dx)),
+                int(round(cell.pos_list[1] + dy)),
+                int(round(cell.pos_list[2] + dx)),
+                int(round(cell.pos_list[3] + dy))
             ]
 
         for child in cell.children:
@@ -1354,7 +1548,8 @@ class Cell:
     @classmethod
     def import_gds_to_cell(cls, filename: str, cell_name: Optional[str] = None,
                           layer_map: Optional[Dict[Tuple[int, int], str]] = None,
-                          add_position_constraints: bool = True) -> 'Cell':
+                          add_position_constraints: bool = True,
+                          use_tech_file: bool = True) -> 'Cell':
         """
         Import GDS and create a cell with constraints to minimize position changes
 
@@ -1369,6 +1564,7 @@ class Cell:
             cell_name: Name of cell to import (if None, imports top cell)
             layer_map: Optional mapping of (layer_number, datatype) to layer names
             add_position_constraints: If True, adds constraints to minimize position changes
+            use_tech_file: If True, use technology file for layer mapping
 
         Returns:
             Cell object with imported hierarchy and position constraints
@@ -1392,18 +1588,43 @@ class Cell:
         except ImportError:
             raise ImportError("gdstk library is required for GDS import. Install with: pip install gdstk")
 
-        # Default layer mapping
+        # Get layer mapping from tech file if available
+        if layer_map is None:
+            if use_tech_file:
+                try:
+                    from layout_automation.tech_file import get_tech_file
+                    tech = get_tech_file()
+                    layer_map = {}
+                    # Build reverse mapping: (gds_layer, gds_datatype) -> layer_name
+                    for (name, purpose), mapping in tech.layers.items():
+                        if purpose == 'drawing':
+                            layer_map[(mapping.gds_layer, mapping.gds_datatype)] = name
+                    if layer_map:
+                        print(f"Using tech file for GDS import ({len(layer_map)} layers)")
+                except Exception as e:
+                    print(f"Warning: Could not load tech file, using defaults: {e}")
+                    layer_map = None
+
+        # Default layer mapping if tech file not available
         if layer_map is None:
             layer_map = {
-                (1, 0): 'metal1',
-                (2, 0): 'metal2',
-                (3, 0): 'metal3',
-                (4, 0): 'metal4',
-                (5, 0): 'poly',
-                (6, 0): 'diff',
-                (7, 0): 'pdiff',
-                (8, 0): 'nwell',
-                (9, 0): 'contact',
+                (30, 0): 'metal1',
+                (50, 0): 'metal2',
+                (70, 0): 'metal3',
+                (90, 0): 'metal4',
+                (110, 0): 'metal5',
+                (130, 0): 'metal6',
+                (10, 0): 'poly',
+                (3, 0): 'ndiff',
+                (4, 0): 'pdiff',
+                (1, 0): 'nwell',
+                (2, 0): 'pwell',
+                (20, 0): 'contact',
+                (40, 0): 'via1',
+                (60, 0): 'via2',
+                (80, 0): 'via3',
+                (100, 0): 'via4',
+                (120, 0): 'via5',
             }
 
         # Read GDS file
