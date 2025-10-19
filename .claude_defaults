@@ -1,0 +1,26 @@
+# Claude Code Default Configuration
+# This file contains default settings for the layout_automation project
+
+# Git Configuration
+GIT_USER_NAME=StevenJWChen
+GIT_USER_EMAIL=jwchenb@gmail.com
+GIT_REMOTE_TYPE=ssh
+GIT_REMOTE_URL=git@github.com:StevenJWChen/layout_automation.git
+
+# SSH Configuration
+SSH_KEY_PATH=~/.ssh/id_ed25519_github
+SSH_KEY_TYPE=ed25519
+
+# Technology Files
+DEFAULT_TECH_FILE=FreePDK45.tf
+DEFAULT_DRF_FILE=SantanaDisplay.drf
+
+# Project Settings
+PROJECT_NAME=layout_automation
+PYTHON_VERSION=3.x
+DEMO_OUTPUT_DIR=demo_outputs
+
+# Common Commands
+# To use tech file: tech = TechFile(); tech.parse_virtuoso_tech_file('FreePDK45.tf'); tech.parse_drf_file('SantanaDisplay.drf')
+# To run demo: python my_demo.py
+# To commit: git add .; git commit -m "message"; git push origin main
