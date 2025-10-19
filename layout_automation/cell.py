@@ -181,41 +181,57 @@ class Cell(FreezeMixin):
 
         # Check if this is a centering constraint that should use soft constraint with tolerance
         # Detect keywords: 'center', 'xcenter', 'ycenter'
+        # Handle mixed constraints like 'xcenter, sy2=oy1' by extracting centering part
         constraint_lower = constraint_str.lower()
-        is_centering = any(keyword in constraint_lower for keyword in ['center', 'xcenter', 'ycenter'])
+        has_centering = any(keyword in constraint_lower for keyword in ['center', 'xcenter', 'ycenter'])
 
-        if is_centering and cell2 is not None:
-            # Store centering constraint for soft constraint handling in solver
-            # This enables: try exact centering, fallback to ±1 tolerance
-            # Be careful with detection order - check specific keywords first
-            if 'xcenter' in constraint_lower:
-                center_x = True
-                center_y = False
-            elif 'ycenter' in constraint_lower:
-                center_x = False
-                center_y = True
-            elif 'center' in constraint_lower:
-                center_x = True
-                center_y = True
+        # Separate centering keywords from other constraints
+        remaining_constraints = []
+        centering_added = False
+
+        if has_centering and cell2 is not None:
+            # Split constraint string by comma
+            constraint_parts = [part.strip() for part in constraint_str.split(',')]
+
+            for part in constraint_parts:
+                part_lower = part.lower()
+
+                # Check if this part is a centering keyword
+                if part_lower in ['center', 'xcenter', 'ycenter']:
+                    # This is a pure centering keyword - handle with soft constraints
+                    if not centering_added:  # Only add once
+                        if 'xcenter' == part_lower:
+                            center_x, center_y = True, False
+                        elif 'ycenter' == part_lower:
+                            center_x, center_y = False, True
+                        elif 'center' == part_lower:
+                            center_x, center_y = True, True
+
+                        self._centering_constraints.append({
+                            'child': cell1,
+                            'ref_obj': cell2,
+                            'tolerance': 1,  # Default tolerance of ±1
+                            'center_x': center_x,
+                            'center_y': center_y
+                        })
+                        centering_added = True
+                else:
+                    # Not a centering keyword - keep for normal processing
+                    remaining_constraints.append(part)
+
+        # If no centering keywords or mixed with other constraints, process remaining parts
+        if not has_centering or remaining_constraints:
+            # Rebuild constraint string from remaining parts (if any)
+            if remaining_constraints:
+                final_constraint_str = ', '.join(remaining_constraints)
             else:
-                center_x = False
-                center_y = False
+                final_constraint_str = constraint_str
 
-            self._centering_constraints.append({
-                'child': cell1,
-                'ref_obj': cell2,
-                'tolerance': 1,  # Default tolerance of ±1
-                'center_x': center_x,
-                'center_y': center_y
-            })
+            # Expand keywords in constraint string
+            expanded_constraint = expand_constraint_keywords(final_constraint_str)
 
-            # Don't add the normal constraint - soft constraints will handle it
-            return self
+            self.constraints.append((cell1, expanded_constraint, cell2))
 
-        # Expand keywords in constraint string
-        expanded_constraint = expand_constraint_keywords(constraint_str)
-
-        self.constraints.append((cell1, expanded_constraint, cell2))
         return self
 
     def center_with_tolerance(self, child: 'Cell', ref_obj: 'Cell' = None, tolerance: float = 0):
