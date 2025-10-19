@@ -19,6 +19,9 @@ from layout_automation.constraint_keywords import expand_constraint_keywords
 # Import style configuration
 from layout_automation.style_config import get_style_config
 
+# Import freeze mixin
+from layout_automation.freeze_mixin import FreezeMixin
+
 import sys
 
 # Optional OR-Tools import (may not be available or may have compatibility issues)
@@ -38,7 +41,7 @@ else:
     pass
 
 
-class Cell:
+class Cell(FreezeMixin):
     """
     Hierarchical cell class with constraint-based positioning
 
@@ -67,11 +70,12 @@ class Cell:
         self.is_leaf = False
         self.layer_name = None
         self._var_indices = None  # Cache for variable indices in optimization vector
-        self._frozen = False  # Track if layout is frozen
-        self._frozen_bbox = None  # Cache bbox when frozen
         self._fixed = False  # Track if layout is fixed (can reposition while maintaining internal structure)
         self._fixed_offsets = {}  # Store relative offsets of children when fixed
         self._centering_constraints = []  # Track centering constraints with tolerance for soft constraint handling
+
+        # Initialize freeze-related attributes from mixin
+        self._init_freeze_attributes()
 
         # Parse arguments
         for arg in args:
@@ -479,14 +483,8 @@ class Cell:
             y2_var = var_objects[y2_idx]
 
             # Check if cell is frozen - if so, fix its size
-            if cell._frozen and cell._frozen_bbox is not None:
-                x1_f, y1_f, x2_f, y2_f = cell._frozen_bbox
-                width = x2_f - x1_f
-                height = y2_f - y1_f
-
-                # Fix the size (but allow position to vary)
-                model.Add(x2_var - x1_var == width)
-                model.Add(y2_var - y1_var == height)
+            if cell._apply_frozen_size_constraint(model, var_objects, x1_var, y1_var, x2_var, y2_var):
+                pass  # Frozen size constraint applied
             # Check if cell is fixed - if so, fix its size based on stored offsets
             elif cell._fixed and len(cell._fixed_offsets) > 0:
                 # Calculate width and height from the maximum offsets
@@ -608,7 +606,7 @@ class Cell:
         # If this cell is frozen or fixed, don't include its children in solver
         # Frozen: internal structure is locked
         # Fixed: will update children via offsets after solving
-        if self._frozen or self._fixed:
+        if self._is_frozen_or_fixed():
             return cells
 
         # Otherwise, recursively collect children
@@ -629,7 +627,7 @@ class Cell:
 
         for cell in cells_by_depth:
             # Skip fixed/frozen cells - their bounds are determined by solver or offsets
-            if cell._fixed or cell._frozen:
+            if cell._is_frozen_or_fixed():
                 continue
 
             if not cell.is_leaf and len(cell.children) > 0:
@@ -699,7 +697,7 @@ class Cell:
         for cell in all_cells:
             # Only add bounding constraints for non-frozen and non-fixed container cells
             # For frozen/fixed cells, size is constrained elsewhere
-            if not cell.is_leaf and len(cell.children) > 0 and not cell._frozen and not cell._fixed:
+            if not cell.is_leaf and len(cell.children) > 0 and not cell._is_frozen_or_fixed():
                 parent_x1_idx, parent_y1_idx, parent_x2_idx, parent_y2_idx = cell._get_var_indices(var_counter)
                 parent_x1 = var_objects[parent_x1_idx]
                 parent_y1 = var_objects[parent_y1_idx]
@@ -742,7 +740,7 @@ class Cell:
         # If cell is frozen or fixed, do not process its internal constraints
         # Frozen: treats cell as black box
         # Fixed: will update children positions after solving via offsets
-        if self._frozen or self._fixed:
+        if self._is_frozen_or_fixed():
             return
 
         # Add constraints from this cell
@@ -783,7 +781,7 @@ class Cell:
         all_constraints.extend(self._centering_constraints)
 
         # Recursively collect from children (skip frozen/fixed cells)
-        if not self._frozen and not self._fixed:
+        if not self._is_frozen_or_fixed():
             for child in self.children:
                 if not child.is_leaf:
                     all_constraints.extend(child._collect_centering_constraints_recursive())
@@ -816,8 +814,15 @@ class Cell:
         coord_max = 10000
 
         for i, constraint in enumerate(centering_constraints):
+            # Skip constraints where child or ref_obj are frozen/fixed
+            # (their children aren't in the solver variable set)
             child = constraint['child']
             ref_obj = constraint['ref_obj']
+
+            # Check if variables exist in var_counter (they won't if cell is frozen/fixed)
+            if id(child) not in var_counter or id(ref_obj) not in var_counter:
+                continue
+
             tolerance = constraint['tolerance']
             center_x = constraint['center_x']
             center_y = constraint['center_y']
@@ -1148,68 +1153,7 @@ class Cell:
             if not child.is_leaf:
                 self._reset_positions_recursive(child)
 
-    def freeze_layout(self) -> 'Cell':
-        """
-        Freeze the current layout as a fixed block
-
-        When frozen:
-        - Internal structure is LOCKED (size and child positions fixed)
-        - Can be used as fixed layout in parent cells
-        - Only the cell's position can be changed by parent constraints
-        - Solver fixes size: x2-x1=frozen_width, y2-y1=frozen_height
-        - Efficiently reusable as fixed IP block
-        - Bounding box is cached for fast access
-
-        Returns:
-            Self for method chaining
-        """
-        if self._frozen:
-            return self  # Already frozen
-
-        # Solve if not yet solved
-        if any(v is None for v in self.pos_list):
-            if not self.solver():
-                raise RuntimeError(f"Cannot freeze cell '{self.name}': solver failed")
-
-        # Mark as frozen
-        self._frozen = True
-
-        # Cache the bounding box
-        self._frozen_bbox = tuple(self.pos_list)
-
-        # Recursively freeze all children
-        for child in self.children:
-            if not child.is_leaf:
-                child.freeze_layout()
-
-        print(f"✓ Cell '{self.name}' frozen with bbox {self._frozen_bbox}")
-        return self
-
-    def unfreeze_layout(self) -> 'Cell':
-        """
-        Unfreeze the layout, allowing modifications again
-
-        Returns:
-            Self for method chaining
-        """
-        self._frozen = False
-        self._frozen_bbox = None
-
-        # Recursively unfreeze all children
-        for child in self.children:
-            if not child.is_leaf:
-                child.unfreeze_layout()
-
-        return self
-
-    def is_frozen(self) -> bool:
-        """
-        Check if this cell's layout is frozen
-
-        Returns:
-            True if frozen, False otherwise
-        """
-        return self._frozen
+    # freeze_layout(), unfreeze_layout(), is_frozen() methods are now provided by FreezeMixin
 
     def get_bbox(self) -> tuple:
         """
@@ -1218,8 +1162,10 @@ class Cell:
         Returns:
             Tuple of (x1, y1, x2, y2) or None if not solved
         """
-        if self._frozen and self._frozen_bbox is not None:
-            return self._frozen_bbox
+        # Check if frozen first
+        frozen_bbox = self._get_frozen_bbox()
+        if frozen_bbox is not None:
+            return frozen_bbox
 
         if all(v is not None for v in self.pos_list):
             return tuple(self.pos_list)
@@ -1975,7 +1921,7 @@ class Cell:
                 info_parts.append(f"{cell.pos_list}")
 
             # Add frozen indicator
-            if cell._frozen:
+            if cell.is_frozen():
                 info_parts.append("[FROZEN]")
 
             # Create the line for this cell
@@ -2020,5 +1966,5 @@ class Cell:
         return result
 
     def __repr__(self):
-        frozen_str = " [FROZEN]" if self._frozen else ""
+        frozen_str = self._get_frozen_status_str()
         return f"Cell(name={self.name}, pos={self.pos_list}, children={len(self.children)}{frozen_str})"
