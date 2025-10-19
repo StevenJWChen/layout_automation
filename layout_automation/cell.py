@@ -1251,7 +1251,7 @@ class Cell(FreezeMixin):
 
         store_offsets(self, (parent_x1, parent_y1))
 
-        print(f"✓ Cell '{self.name}' fixed with {len(self._fixed_offsets)} relative offsets stored")
+        print(f"[OK] Cell '{self.name}' fixed with {len(self._fixed_offsets)} relative offsets stored")
         return self
 
     def unfix_layout(self) -> 'Cell':
@@ -1837,7 +1837,7 @@ class Cell(FreezeMixin):
         # Convert GDS cell to Cell object
         imported_cell = cls._from_gds_cell_with_constraints(gds_cell, layer_map, add_position_constraints)
 
-        print(f"✓ Imported cell '{imported_cell.name}' from {filename}")
+        print(f"[OK] Imported cell '{imported_cell.name}' from {filename}")
         print(f"  Children: {len(imported_cell.children)}")
         if add_position_constraints:
             print(f"  Position constraints added to minimize changes from original")
