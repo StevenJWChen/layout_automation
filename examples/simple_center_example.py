@@ -18,8 +18,8 @@ polygon2 = Cell('polygon2', 'metal2')
 
 # Define sizes and position of first polygon
 parent.constrain(polygon1, 'width=4, height=6')
-parent.constrain(polygon2, 'width=2, height=3')
-
+parent.constrain(polygon2, 'width=2, height=32')
+polygon1.fix_layout()
 # Center polygon2 with polygon1 (prefers exact, allows ±1 tolerance)
 parent.constrain(polygon2, 'center', polygon1)
 
@@ -54,6 +54,11 @@ if parent.solver():
     parent.draw()
 else:
     print("✗ Solver failed")
+a=Cell('a')
+pc = parent.copy()
+a.constrain(parent, 'ycenter, sx2=ox1', pc) 
+#a.constrain(parent, 'sy2=oy1',pc)
+a.draw()
 
 print("\n" + "="*60)
 print("How it works:")
