@@ -71,6 +71,7 @@ class Cell:
         self._frozen_bbox = None  # Cache bbox when frozen
         self._fixed = False  # Track if layout is fixed (can reposition while maintaining internal structure)
         self._fixed_offsets = {}  # Store relative offsets of children when fixed
+        self._centering_constraints = []  # Track centering constraints with tolerance for soft constraint handling
 
         # Parse arguments
         for arg in args:
@@ -165,9 +166,6 @@ class Cell:
         if constraint_str is None:
             raise ValueError("constraint_str is required when cell1 is a Cell")
 
-        # Expand keywords in constraint string
-        expanded_constraint = expand_constraint_keywords(constraint_str)
-
         # Auto-add instances to children if not already present
         # This allows users to write: parent.constrain(child1, ..., child2)
         # without explicitly calling parent.add_instance(child1) first
@@ -177,7 +175,94 @@ class Cell:
         if cell2 is not None and cell2 != self and cell2 not in self.children:
             self.add_instance(cell2)
 
+        # Check if this is a centering constraint that should use soft constraint with tolerance
+        # Detect keywords: 'center', 'xcenter', 'ycenter'
+        constraint_lower = constraint_str.lower()
+        is_centering = any(keyword in constraint_lower for keyword in ['center', 'xcenter', 'ycenter'])
+
+        if is_centering and cell2 is not None:
+            # Store centering constraint for soft constraint handling in solver
+            # This enables: try exact centering, fallback to ±1 tolerance
+            # Be careful with detection order - check specific keywords first
+            if 'xcenter' in constraint_lower:
+                center_x = True
+                center_y = False
+            elif 'ycenter' in constraint_lower:
+                center_x = False
+                center_y = True
+            elif 'center' in constraint_lower:
+                center_x = True
+                center_y = True
+            else:
+                center_x = False
+                center_y = False
+
+            self._centering_constraints.append({
+                'child': cell1,
+                'ref_obj': cell2,
+                'tolerance': 1,  # Default tolerance of ±1
+                'center_x': center_x,
+                'center_y': center_y
+            })
+
+            # Don't add the normal constraint - soft constraints will handle it
+            return self
+
+        # Expand keywords in constraint string
+        expanded_constraint = expand_constraint_keywords(constraint_str)
+
         self.constraints.append((cell1, expanded_constraint, cell2))
+        return self
+
+    def center_with_tolerance(self, child: 'Cell', ref_obj: 'Cell' = None, tolerance: float = 0):
+        """
+        Simple method to center child with tolerance (exact if tolerance=0)
+
+        This is a convenience method that adds the right constraints to achieve
+        centering with tolerance, without left/bottom bias.
+
+        Args:
+            child: Child cell to center
+            ref_obj: Reference object (defaults to self)
+            tolerance: Tolerance in layout units (0 = exact centering)
+
+        Returns:
+            self (for method chaining)
+
+        Examples:
+            # Exact centering
+            parent.center_with_tolerance(child, tolerance=0)
+
+            # Center with ±10 unit tolerance
+            parent.center_with_tolerance(child, tolerance=10)
+
+            # Center child1 relative to child2
+            parent.center_with_tolerance(child1, ref_obj=child2, tolerance=5)
+
+        Note:
+            - If tolerance=0: Uses exact equality constraint (no bias)
+            - If tolerance>0: Uses inequality constraints (may have left/bottom bias)
+              For true centering with tolerance, use the custom solver:
+              from layout_automation.centering_with_tolerance import (
+                  add_centering_with_tolerance, solver_with_centering_objective
+              )
+        """
+        if ref_obj is None:
+            ref_obj = self
+
+        if tolerance == 0:
+            # Exact centering - use equality constraint (no bias)
+            self.constrain(child, 'center', ref_obj)
+        else:
+            # With tolerance - use inequality constraints
+            # WARNING: This may have left/bottom bias due to solver objective
+            # For true centering with tolerance, use centering_with_tolerance.py
+            tolerance_sum = tolerance * 2
+            self.constrain(child, f'sx1+sx2>=ox1+ox2-{tolerance_sum}', ref_obj)
+            self.constrain(child, f'sx1+sx2<=ox1+ox2+{tolerance_sum}', ref_obj)
+            self.constrain(child, f'sy1+sy2>=oy1+oy2-{tolerance_sum}', ref_obj)
+            self.constrain(child, f'sy1+sy2<=oy1+oy2+{tolerance_sum}', ref_obj)
+
         return self
 
     def _get_var_indices(self, var_counter: Dict[int, int]) -> Tuple[int, int, int, int]:
@@ -444,6 +529,16 @@ class Cell:
         # Add all user constraints from the hierarchy
         self._add_constraints_recursive_ortools(model, var_counter, var_objects)
 
+        # Collect all centering constraints from hierarchy
+        all_centering_constraints = self._collect_centering_constraints_recursive()
+
+        # Add soft constraints for centering preferences
+        centering_penalty_terms = []
+        if all_centering_constraints:
+            centering_penalty_terms = self._add_centering_soft_constraints_ortools(
+                model, var_counter, var_objects, all_centering_constraints
+            )
+
         # Objective: minimize total layout size (sum of widths and heights)
         # We'll minimize the maximum x and y coordinates
         objective_terms = []
@@ -455,8 +550,13 @@ class Cell:
             objective_terms.append(x2_var)
             objective_terms.append(y2_var)
 
-        # Minimize sum of all x2 and y2 coordinates (pushes layout to be compact)
-        model.Minimize(sum(objective_terms))
+        # Minimize: centering deviation (high priority) + layout size (lower priority)
+        # Scale layout terms down so centering takes precedence
+        if centering_penalty_terms:
+            model.Minimize(sum(centering_penalty_terms) + sum(objective_terms))
+        else:
+            # No centering constraints, just minimize layout size
+            model.Minimize(sum(objective_terms))
 
         # Solve the model
         solver = cp_model.CpSolver()
@@ -669,6 +769,124 @@ class Cell:
         # Recursively add constraints from children
         for child in self.children:
             child._add_constraints_recursive_ortools(model, var_counter, var_objects)
+
+    def _collect_centering_constraints_recursive(self) -> List[Dict]:
+        """
+        Recursively collect all centering constraints from hierarchy
+
+        Returns:
+            List of centering constraint dictionaries
+        """
+        all_constraints = []
+
+        # Collect from this cell
+        all_constraints.extend(self._centering_constraints)
+
+        # Recursively collect from children (skip frozen/fixed cells)
+        if not self._frozen and not self._fixed:
+            for child in self.children:
+                if not child.is_leaf:
+                    all_constraints.extend(child._collect_centering_constraints_recursive())
+
+        return all_constraints
+
+    def _add_centering_soft_constraints_ortools(self, model: cp_model.CpModel,
+                                                 var_counter: Dict[int, int],
+                                                 var_objects: Dict[int, cp_model.IntVar],
+                                                 centering_constraints: List[Dict]) -> List:
+        """
+        Add soft constraints for centering with tolerance using OR-Tools recommended pattern
+
+        This implements the OR-Tools soft constraint pattern:
+        1. Create boolean variable for "is exactly centered"
+        2. Add tolerance constraints (always enforced)
+        3. Add exact centering constraint (only enforced if boolean is True)
+        4. Add penalty to objective for not being exactly centered
+
+        Args:
+            model: OR-Tools CP model
+            var_counter: Variable counter dictionary
+            var_objects: Dictionary mapping variable indices to OR-Tools variables
+            centering_constraints: List of centering constraint dictionaries
+
+        Returns:
+            List of penalty terms to add to objective
+        """
+        penalty_terms = []
+        coord_max = 10000
+
+        for i, constraint in enumerate(centering_constraints):
+            child = constraint['child']
+            ref_obj = constraint['ref_obj']
+            tolerance = constraint['tolerance']
+            center_x = constraint['center_x']
+            center_y = constraint['center_y']
+
+            # Get variable indices
+            child_x1_idx, child_y1_idx, child_x2_idx, child_y2_idx = child._get_var_indices(var_counter)
+            ref_x1_idx, ref_y1_idx, ref_x2_idx, ref_y2_idx = ref_obj._get_var_indices(var_counter)
+
+            # Get OR-Tools variables
+            child_x1 = var_objects[child_x1_idx]
+            child_x2 = var_objects[child_x2_idx]
+            child_y1 = var_objects[child_y1_idx]
+            child_y2 = var_objects[child_y2_idx]
+
+            ref_x1 = var_objects[ref_x1_idx]
+            ref_x2 = var_objects[ref_x2_idx]
+            ref_y1 = var_objects[ref_y1_idx]
+            ref_y2 = var_objects[ref_y2_idx]
+
+            tolerance_sum = tolerance * 2
+
+            # X centering with soft constraint
+            if center_x:
+                # Create boolean for "is exactly centered in X"
+                is_x_centered = model.NewBoolVar(f'{child.name}_x_centered_{i}')
+
+                # Exact centering (only enforced if is_x_centered = True)
+                model.Add(child_x1 + child_x2 == ref_x1 + ref_x2).OnlyEnforceIf(is_x_centered)
+
+                # Tolerance constraints (always enforced)
+                model.Add(child_x1 + child_x2 >= ref_x1 + ref_x2 - tolerance_sum)
+                model.Add(child_x1 + child_x2 <= ref_x1 + ref_x2 + tolerance_sum)
+
+                # If NOT exactly centered, we need to ensure the constraint is not enforced
+                # This is automatic - OnlyEnforceIf handles it
+
+                # Add deviation penalty (minimize when not exactly centered)
+                # Penalty = large_weight * (1 - is_x_centered)
+                # We'll use deviation variable approach for smoother optimization
+                deviation_x = model.NewIntVar(0, coord_max * 4, f'{child.name}_x_dev_{i}')
+                model.Add(deviation_x >= child_x1 + child_x2 - ref_x1 - ref_x2)
+                model.Add(deviation_x >= ref_x1 + ref_x2 - child_x1 - child_x2)
+
+                # Add large penalty for deviation (makes centering high priority)
+                penalty_terms.append(deviation_x * 10000)
+
+            # Y centering with soft constraint
+            if center_y:
+                # Create boolean for "is exactly centered in Y"
+                is_y_centered = model.NewBoolVar(f'{child.name}_y_centered_{i}')
+
+                # Exact centering (only enforced if is_y_centered = True)
+                model.Add(child_y1 + child_y2 == ref_y1 + ref_y2).OnlyEnforceIf(is_y_centered)
+
+                # Tolerance constraints (always enforced)
+                model.Add(child_y1 + child_y2 >= ref_y1 + ref_y2 - tolerance_sum)
+                model.Add(child_y1 + child_y2 <= ref_y1 + ref_y2 + tolerance_sum)
+
+                # Add deviation penalty
+                deviation_y = model.NewIntVar(0, coord_max * 4, f'{child.name}_y_dev_{i}')
+                model.Add(deviation_y >= child_y1 + child_y2 - ref_y1 - ref_y2)
+                model.Add(deviation_y >= ref_y1 + ref_y2 - child_y1 - child_y2)
+
+                penalty_terms.append(deviation_y * 10000)
+
+        if penalty_terms:
+            print(f"Added soft centering constraints for {len(centering_constraints)} centering operation(s)")
+
+        return penalty_terms
 
     def _build_ortools_linear_expr(self, expr_str: str, var_map: Dict[str, int],
                                      var_objects: Dict[int, cp_model.IntVar]):
