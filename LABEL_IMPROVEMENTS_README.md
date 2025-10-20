@@ -10,12 +10,13 @@ The `draw()` method now includes smart label rendering with adaptive sizing, red
 
 ```python
 cell.draw(solve_first=True, ax=None, show=True,
-          show_labels=True, label_mode='auto')
+          show_labels=True, label_mode='auto', label_position='top-left')
 ```
 
 **New Parameters:**
 - `show_labels` (bool): Whether to show cell/layer labels (default: `True`)
 - `label_mode` (str): Label display mode (default: `'auto'`)
+- `label_position` (str): Label placement position (default: `'top-left'`)
 
 ## Label Modes
 
@@ -88,6 +89,59 @@ No labels displayed:
 cell.draw(label_mode='none')  # No labels
 # OR
 cell.draw(show_labels=False)  # Same result
+```
+
+## Label Positions
+
+### Available Positions
+
+The `label_position` parameter controls where labels are placed within each cell:
+
+- **`'top-left'`** (Default, Recommended): Labels at upper-left corner
+  - Best for avoiding overlap in dense layouts
+  - Labels stack naturally like reading text
+  - Easy to scan visually
+  - Works well with hierarchical layouts
+
+- **`'top-right'`**: Labels at upper-right corner
+  - Alternative corner placement
+  - Useful when left side is cluttered
+
+- **`'bottom-left'`**: Labels at lower-left corner
+  - Good when top area is crowded
+  - Maintains left alignment
+
+- **`'bottom-right'`**: Labels at lower-right corner
+  - Opposite corner from default
+  - Useful for specific layout needs
+
+- **`'center'`**: Labels at cell center (old behavior)
+  - More overlap in dense layouts
+  - Use for backward compatibility
+
+### Why Top-Left is Best
+
+Corner positioning (especially top-left) provides significant advantages over center positioning:
+
+- **Less Overlap**: Labels positioned at corners are less likely to overlap with adjacent cell labels
+- **Natural Reading**: Top-left aligns with reading direction, making layouts easier to scan
+- **Consistent**: All labels align consistently, creating visual order
+- **Hierarchical**: Works well with nested layouts where parent/child relationships are important
+- **Dense Layouts**: Crucial for layouts with many small cells in close proximity
+
+### Position Examples
+
+```python
+# Default - top-left corner (recommended)
+cell.draw()
+
+# Center positioning (old behavior)
+cell.draw(label_position='center')
+
+# Alternative corners
+cell.draw(label_position='top-right')
+cell.draw(label_position='bottom-left')
+cell.draw(label_position='bottom-right')
 ```
 
 ## Key Improvements
@@ -251,18 +305,26 @@ All existing code works without changes:
 
 ## Tips
 
-1. **For most layouts**: Use `label_mode='auto'` (default)
+1. **For most layouts**: Use `label_mode='auto'` and `label_position='top-left'` (both defaults)
 2. **For presentations**: Use `label_mode='none'` for clean look
-3. **For dense layouts**: `'auto'` automatically handles it
-4. **For debugging**: `'full'` shows all information
-5. **For space-constrained**: `'compact'` minimizes label size
+3. **For dense layouts**: `'auto'` mode + `'top-left'` position automatically handles it
+4. **For debugging**: `'full'` mode shows all information
+5. **For space-constrained**: `'compact'` mode minimizes label size
+6. **For overlap issues**: Try different corner positions (`'top-right'`, `'bottom-left'`, etc.)
 
 ## See Also
 
-- **Test file**: `test_label_improvements.py`
-- **Examples**: Visual comparison in `demo_outputs/test_label_modes.png`
-- **Dense layout demo**: `demo_outputs/test_dense_layout.png`
-- **Real-world example**: `demo_outputs/test_real_world_labels.png`
+- **Test files**:
+  - `test_label_improvements.py` - Label modes comparison
+  - `test_label_positions.py` - Label position comparison
+- **Examples**:
+  - `demo_outputs/test_label_modes.png` - Visual comparison of all modes
+  - `demo_outputs/test_label_positions_all.png` - All 5 position options
+  - `demo_outputs/test_center_vs_topleft.png` - Center vs top-left comparison
+  - `demo_outputs/test_dense_layout.png` - Dense layout showing smart sizing
+  - `demo_outputs/test_dense_position_comparison.png` - Dense layout position comparison
+  - `demo_outputs/test_real_world_labels.png` - Real-world example comparison
+  - `demo_outputs/test_gds_position_comparison.png` - Real GDS position comparison
 
 ## Summary
 
@@ -270,7 +332,8 @@ The label system now intelligently adapts to your layout:
 - ✨ Smart sizing based on cell dimensions
 - ✨ Cleaner, more readable fonts
 - ✨ Multiple modes for different needs
+- ✨ Flexible positioning options (5 corner/center positions)
 - ✨ Automatic overlap avoidance
 - ✨ Works great from simple to complex layouts
 
-Just use `cell.draw()` and enjoy better labels! 🎨
+Just use `cell.draw()` and enjoy better labels with top-left corner positioning by default!

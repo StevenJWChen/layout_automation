@@ -942,7 +942,8 @@ class Cell(FreezeMixin):
         return linear_expr
 
     def draw(self, solve_first: bool = True, ax=None, show: bool = True,
-             show_labels: bool = True, label_mode: str = 'auto'):
+             show_labels: bool = True, label_mode: str = 'auto',
+             label_position: str = 'top-left'):
         """
         Visualize the layout using matplotlib
 
@@ -956,6 +957,12 @@ class Cell(FreezeMixin):
                 - 'full': Always show full labels (name + layer)
                 - 'compact': Show only essential info
                 - 'none': No labels (same as show_labels=False)
+            label_position: Label position within cell
+                - 'top-left': Upper left corner (default, best for avoiding overlap)
+                - 'top-right': Upper right corner
+                - 'bottom-left': Lower left corner
+                - 'bottom-right': Lower right corner
+                - 'center': Center of cell (old behavior)
         """
         if solve_first:
             if not self.solver():
@@ -968,7 +975,8 @@ class Cell(FreezeMixin):
             fig = ax.figure
 
         # Draw all cells recursively with label options
-        self._draw_recursive(ax, level=0, show_labels=show_labels, label_mode=label_mode)
+        self._draw_recursive(ax, level=0, show_labels=show_labels,
+                           label_mode=label_mode, label_position=label_position)
 
         ax.set_aspect('equal')
         ax.autoscale()
@@ -982,7 +990,8 @@ class Cell(FreezeMixin):
 
         return fig
 
-    def _draw_recursive(self, ax, level: int = 0, show_labels: bool = True, label_mode: str = 'auto'):
+    def _draw_recursive(self, ax, level: int = 0, show_labels: bool = True,
+                       label_mode: str = 'auto', label_position: str = 'top-left'):
         """
         Recursively draw all cells with customizable styles
 
@@ -991,10 +1000,11 @@ class Cell(FreezeMixin):
             level: Hierarchy level (for color coding)
             show_labels: Whether to show labels
             label_mode: Label display mode ('auto', 'full', 'compact', 'none')
+            label_position: Label position ('top-left', 'center', etc.)
         """
         # Draw children first (so parent outlines appear on top)
         for child in self.children:
-            child._draw_recursive(ax, level + 1, show_labels, label_mode)
+            child._draw_recursive(ax, level + 1, show_labels, label_mode, label_position)
 
         # Now draw this cell
         if all(v is not None for v in self.pos_list):
@@ -1024,19 +1034,21 @@ class Cell(FreezeMixin):
 
                 # Add label with smart sizing
                 if show_labels and label_mode != 'none':
-                    cx = (x1 + x2) / 2
-                    cy = (y1 + y2) / 2
-
                     # Determine label content and styling based on mode and cell size
                     label_text, fontsize, fontweight = self._get_smart_label(
                         width, height, label_mode
                     )
 
                     if label_text:  # Only draw if there's text
-                        ax.text(cx, cy, label_text, ha='center', va='center',
+                        # Get label position and alignment
+                        lx, ly, ha, va = self._get_label_position(
+                            x1, y1, x2, y2, label_position
+                        )
+
+                        ax.text(lx, ly, label_text, ha=ha, va=va,
                                fontsize=fontsize, weight=fontweight,
                                color='white', alpha=0.9,
-                               bbox=dict(boxstyle='round,pad=0.3', facecolor='black',
+                               bbox=dict(boxstyle='round,pad=0.2', facecolor='black',
                                        alpha=0.3, edgecolor='none'))
 
             else:
@@ -1065,6 +1077,34 @@ class Cell(FreezeMixin):
                     ax.text(x1, y2 + 0.5, label, ha='left', va='bottom',
                            fontsize=fontsize, weight='normal',
                            color=edge_color, style='italic', alpha=0.8)
+
+    def _get_label_position(self, x1: float, y1: float, x2: float, y2: float,
+                           position: str):
+        """
+        Calculate label position and alignment based on position mode
+
+        Args:
+            x1, y1, x2, y2: Cell bounds
+            position: Position mode ('top-left', 'center', etc.)
+
+        Returns:
+            Tuple of (x, y, horizontal_alignment, vertical_alignment)
+        """
+        # Small padding from edges
+        pad = 0.5
+
+        if position == 'top-left':
+            return (x1 + pad, y2 - pad, 'left', 'top')
+        elif position == 'top-right':
+            return (x2 - pad, y2 - pad, 'right', 'top')
+        elif position == 'bottom-left':
+            return (x1 + pad, y1 + pad, 'left', 'bottom')
+        elif position == 'bottom-right':
+            return (x2 - pad, y1 + pad, 'right', 'bottom')
+        else:  # 'center' or any other value
+            cx = (x1 + x2) / 2
+            cy = (y1 + y2) / 2
+            return (cx, cy, 'center', 'center')
 
     def _get_smart_label(self, width: float, height: float, label_mode: str):
         """
