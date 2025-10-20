@@ -1143,11 +1143,47 @@ class Cell(FreezeMixin):
             new_cell.pos_list = [None, None, None, None]
             # Reset all children positions recursively
             self._reset_positions_recursive(new_cell)
+
+            # IMPORTANT: Rebuild _fixed_offsets with new child IDs
+            # After deepcopy, children have new id() values, but _fixed_offsets
+            # still has old IDs as keys. We need to remap them.
+            if len(new_cell._fixed_offsets) > 0:
+                self._rebuild_fixed_offsets(new_cell, self)
         else:
             # Reset position list for the new copy
             new_cell.pos_list = [None, None, None, None]
 
         return new_cell
+
+    def _rebuild_fixed_offsets(self, new_cell: 'Cell', original_cell: 'Cell'):
+        """
+        Rebuild _fixed_offsets dictionary with new child IDs after deep copy
+
+        After deepcopy, children are new objects with new id() values,
+        but _fixed_offsets still has old IDs as keys. This method creates
+        a new mapping using the new child IDs.
+
+        Args:
+            new_cell: The copied cell with new children
+            original_cell: The original cell with old children
+        """
+        new_offsets = {}
+
+        # Map old children to new children by index
+        for i, (old_child, new_child) in enumerate(zip(original_cell.children, new_cell.children)):
+            old_id = id(old_child)
+            new_id = id(new_child)
+
+            # If old_id is in offsets, copy it to new_id
+            if old_id in original_cell._fixed_offsets:
+                new_offsets[new_id] = original_cell._fixed_offsets[old_id]
+
+            # Recursively rebuild for nested fixed cells
+            if new_child._fixed and len(new_child._fixed_offsets) > 0:
+                self._rebuild_fixed_offsets(new_child, old_child)
+
+        # Replace the offsets dictionary
+        new_cell._fixed_offsets = new_offsets
 
     def _reset_var_indices_recursive(self, cell: 'Cell'):
         """

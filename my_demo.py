@@ -173,6 +173,7 @@ top.solver()
 top.draw(show=False, solve_first=False)
 plt.savefig('demo_outputs/virtuoso_demo_hierarchical.png', dpi=150, bbox_inches='tight')
 plt.close()
+top.draw()
 print("    Saved: demo_outputs/virtuoso_demo_hierarchical.png")
 print(f"    Top level bounds: {top.get_bounds()}")
 
