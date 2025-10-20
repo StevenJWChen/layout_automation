@@ -941,7 +941,8 @@ class Cell(FreezeMixin):
 
         return linear_expr
 
-    def draw(self, solve_first: bool = True, ax=None, show: bool = True):
+    def draw(self, solve_first: bool = True, ax=None, show: bool = True,
+             show_labels: bool = True, label_mode: str = 'auto'):
         """
         Visualize the layout using matplotlib
 
@@ -949,6 +950,12 @@ class Cell(FreezeMixin):
             solve_first: If True, run solver before drawing
             ax: Matplotlib axes object (creates new if None)
             show: If True, display the plot
+            show_labels: If True, show cell/layer labels
+            label_mode: Label display mode
+                - 'auto': Smart sizing based on cell dimensions (default)
+                - 'full': Always show full labels (name + layer)
+                - 'compact': Show only essential info
+                - 'none': No labels (same as show_labels=False)
         """
         if solve_first:
             if not self.solver():
@@ -960,8 +967,8 @@ class Cell(FreezeMixin):
         else:
             fig = ax.figure
 
-        # Draw all cells recursively
-        self._draw_recursive(ax)
+        # Draw all cells recursively with label options
+        self._draw_recursive(ax, level=0, show_labels=show_labels, label_mode=label_mode)
 
         ax.set_aspect('equal')
         ax.autoscale()
@@ -975,17 +982,19 @@ class Cell(FreezeMixin):
 
         return fig
 
-    def _draw_recursive(self, ax, level: int = 0):
+    def _draw_recursive(self, ax, level: int = 0, show_labels: bool = True, label_mode: str = 'auto'):
         """
         Recursively draw all cells with customizable styles
 
         Args:
             ax: Matplotlib axes object
             level: Hierarchy level (for color coding)
+            show_labels: Whether to show labels
+            label_mode: Label display mode ('auto', 'full', 'compact', 'none')
         """
         # Draw children first (so parent outlines appear on top)
         for child in self.children:
-            child._draw_recursive(ax, level + 1)
+            child._draw_recursive(ax, level + 1, show_labels, label_mode)
 
         # Now draw this cell
         if all(v is not None for v in self.pos_list):
@@ -1013,11 +1022,22 @@ class Cell(FreezeMixin):
                 )
                 ax.add_patch(patch)
 
-                # Add label
-                cx = (x1 + x2) / 2
-                cy = (y1 + y2) / 2
-                label = f"{self.name}\n({self.layer_name})"
-                ax.text(cx, cy, label, ha='center', va='center', fontsize=8, weight='bold')
+                # Add label with smart sizing
+                if show_labels and label_mode != 'none':
+                    cx = (x1 + x2) / 2
+                    cy = (y1 + y2) / 2
+
+                    # Determine label content and styling based on mode and cell size
+                    label_text, fontsize, fontweight = self._get_smart_label(
+                        width, height, label_mode
+                    )
+
+                    if label_text:  # Only draw if there's text
+                        ax.text(cx, cy, label_text, ha='center', va='center',
+                               fontsize=fontsize, weight=fontweight,
+                               color='white', alpha=0.9,
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='black',
+                                       alpha=0.3, edgecolor='none'))
 
             else:
                 # Container cells: outline only, no fill
@@ -1038,9 +1058,71 @@ class Cell(FreezeMixin):
                 ax.add_patch(patch)
 
                 # Add label at top-left corner (outside the box)
-                label = f"{self.name}"
-                ax.text(x1, y2 + 1, label, ha='left', va='bottom', fontsize=9,
-                       weight='bold', color=edge_color, style='italic')
+                if show_labels and label_mode != 'none':
+                    label = f"{self.name}"
+                    # Smaller, less intrusive label for containers
+                    fontsize = 7 if label_mode == 'auto' else 9
+                    ax.text(x1, y2 + 0.5, label, ha='left', va='bottom',
+                           fontsize=fontsize, weight='normal',
+                           color=edge_color, style='italic', alpha=0.8)
+
+    def _get_smart_label(self, width: float, height: float, label_mode: str):
+        """
+        Generate smart label text and styling based on cell size and mode
+
+        Args:
+            width: Cell width
+            height: Cell height
+            label_mode: Label mode ('auto', 'full', 'compact', 'none')
+
+        Returns:
+            Tuple of (label_text, fontsize, fontweight)
+        """
+        # Calculate cell area to determine label size
+        area = width * height
+        min_dim = min(width, height)
+
+        if label_mode == 'full':
+            # Always show full label
+            label_text = f"{self.name}\n({self.layer_name})"
+            fontsize = 7
+            fontweight = 'normal'
+
+        elif label_mode == 'compact':
+            # Show abbreviated info
+            # Use first 3 chars of name if too long
+            short_name = self.name[:3] + '.' if len(self.name) > 4 else self.name
+            label_text = f"{short_name}"
+            fontsize = 5
+            fontweight = 'normal'
+
+        else:  # 'auto' mode - smart sizing based on dimensions
+            # Very small cells: no label or just abbreviation
+            if min_dim < 3 or area < 15:
+                label_text = ""  # Too small for label
+                fontsize = 4
+                fontweight = 'normal'
+
+            # Small cells: abbreviated name only
+            elif min_dim < 8 or area < 100:
+                short_name = self.name[:2] if len(self.name) > 3 else self.name
+                label_text = short_name
+                fontsize = 4
+                fontweight = 'normal'
+
+            # Medium cells: name only
+            elif min_dim < 15 or area < 300:
+                label_text = self.name
+                fontsize = 5
+                fontweight = 'normal'
+
+            # Large cells: full label
+            else:
+                label_text = f"{self.name}\n{self.layer_name}"
+                fontsize = 6
+                fontweight = 'normal'
+
+        return label_text, fontsize, fontweight
 
     def _create_shape_patch(self, x1, y1, width, height, shape='rectangle', **kwargs):
         """
