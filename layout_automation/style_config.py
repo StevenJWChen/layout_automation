@@ -17,7 +17,9 @@ class LayerStyle:
                  alpha: float = 0.6,
                  edge_color: str = 'black',
                  edge_width: float = 2.0,
-                 shape: str = 'rectangle'):
+                 shape: str = 'rectangle',
+                 line_style: str = '-',
+                 zorder: int = 1):
         """
         Initialize layer style
 
@@ -26,13 +28,17 @@ class LayerStyle:
             alpha: Transparency (0.0 to 1.0)
             edge_color: Boundary/edge color
             edge_width: Boundary line width
-            shape: Shape type ('rectangle', 'rounded', 'circle', 'octagon')
+            shape: Shape type ('rectangle', 'rounded', 'circle', 'octagon', 'ellipse')
+            line_style: Edge line style ('-', '--', '-.', ':', 'solid', 'dashed', 'dashdot', 'dotted')
+            zorder: Drawing order (higher values drawn on top, default=1)
         """
         self.color = color
         self.alpha = alpha
         self.edge_color = edge_color
         self.edge_width = edge_width
         self.shape = shape
+        self.line_style = line_style
+        self.zorder = zorder
 
 
 class ContainerStyle:
@@ -43,7 +49,8 @@ class ContainerStyle:
                  edge_width: float = 2.0,
                  linestyle: str = '--',
                  alpha: float = 0.8,
-                 shape: str = 'rectangle'):
+                 shape: str = 'rectangle',
+                 zorder: int = 0):
         """
         Initialize container style
 
@@ -53,12 +60,14 @@ class ContainerStyle:
             linestyle: Line style ('-', '--', '-.', ':')
             alpha: Transparency (0.0 to 1.0)
             shape: Shape type ('rectangle', 'rounded')
+            zorder: Drawing order (higher values drawn on top, default=0 for containers)
         """
         self.edge_color = edge_color
         self.edge_width = edge_width
         self.linestyle = linestyle
         self.alpha = alpha
         self.shape = shape
+        self.zorder = zorder
 
 
 class StyleConfig:
@@ -107,7 +116,9 @@ class StyleConfig:
                        alpha: Optional[float] = None,
                        edge_color: Optional[str] = None,
                        edge_width: Optional[float] = None,
-                       shape: Optional[str] = None):
+                       shape: Optional[str] = None,
+                       line_style: Optional[str] = None,
+                       zorder: Optional[int] = None):
         """
         Set style for a specific layer
 
@@ -117,7 +128,9 @@ class StyleConfig:
             alpha: Transparency (0.0 to 1.0)
             edge_color: Boundary color
             edge_width: Boundary line width
-            shape: Shape type ('rectangle', 'rounded', 'circle', 'octagon')
+            shape: Shape type ('rectangle', 'rounded', 'circle', 'octagon', 'ellipse')
+            line_style: Edge line style ('-', '--', '-.', ':', 'solid', 'dashed', 'dashdot', 'dotted')
+            zorder: Drawing order (higher values drawn on top)
         """
         # Get existing style or create new one
         if layer_name in self.layer_styles:
@@ -136,6 +149,10 @@ class StyleConfig:
             style.edge_width = edge_width
         if shape is not None:
             style.shape = shape
+        if line_style is not None:
+            style.line_style = line_style
+        if zorder is not None:
+            style.zorder = zorder
 
         self.layer_styles[layer_name] = style
 
@@ -144,7 +161,8 @@ class StyleConfig:
                            edge_width: Optional[float] = None,
                            linestyle: Optional[str] = None,
                            alpha: Optional[float] = None,
-                           shape: Optional[str] = None):
+                           shape: Optional[str] = None,
+                           zorder: Optional[int] = None):
         """
         Set style for container cells
 
@@ -154,6 +172,7 @@ class StyleConfig:
             linestyle: Line style ('-', '--', '-.', ':')
             alpha: Transparency (0.0 to 1.0)
             shape: Shape type ('rectangle', 'rounded')
+            zorder: Drawing order (higher values drawn on top)
         """
         if edge_color is not None:
             self.container_style.edge_color = edge_color
@@ -165,6 +184,8 @@ class StyleConfig:
             self.container_style.alpha = alpha
         if shape is not None:
             self.container_style.shape = shape
+        if zorder is not None:
+            self.container_style.zorder = zorder
 
     def get_layer_style(self, layer_name: str) -> LayerStyle:
         """Get style for a specific layer"""
@@ -200,5 +221,7 @@ def reset_style_config():
             alpha=style.alpha,
             edge_color=style.edge_color,
             edge_width=style.edge_width,
-            shape=style.shape
+            shape=style.shape,
+            line_style=style.line_style,
+            zorder=style.zorder
         )

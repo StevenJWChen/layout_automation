@@ -21,6 +21,20 @@ CONSTRAINT_KEYWORDS = {
     'top': 'sy2=oy2',
     'bottom': 'sy1=oy1',
 
+    # Edge distance keywords (horizontal)
+    # Format: {subject_edge}{object_edge}_edge
+    # l=left(x1), r=right(x2), b=bottom(y1), t=top(y2)
+    'll_edge': 'sx1-ox1',     # Distance from subject left to object left
+    'lr_edge': 'sx1-ox2',     # Distance from subject left to object right
+    'rl_edge': 'sx2-ox1',     # Distance from subject right to object left (horizontal spacing)
+    'rr_edge': 'sx2-ox2',     # Distance from subject right to object right
+
+    # Edge distance keywords (vertical)
+    'bb_edge': 'sy1-oy1',     # Distance from subject bottom to object bottom
+    'bt_edge': 'sy1-oy2',     # Distance from subject bottom to object top
+    'tb_edge': 'sy2-oy1',     # Distance from subject top to object bottom (vertical spacing)
+    'tt_edge': 'sy2-oy2',     # Distance from subject top to object top
+
     # Size keywords (subject matches object)
     'swidth': 'sx2-sx1',      # Subject width (use with =value or =ox2-ox1)
     'sheight': 'sy2-sy1',     # Subject height
@@ -101,6 +115,26 @@ def get_keyword_table():
 └──────────────────────────┴──────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
+│ EDGE DISTANCE KEYWORDS (Horizontal)                                        │
+├──────────────────────────┬──────────────────────────────────────────────────┤
+│ ll_edge                  │ sx1-ox1  (subject left to object left)          │
+│ lr_edge                  │ sx1-ox2  (subject left to object right)         │
+│ rl_edge                  │ sx2-ox1  (subject right to object left) ⭐      │
+│ rr_edge                  │ sx2-ox2  (subject right to object right)        │
+│                          │ ⭐ Most useful for horizontal spacing!          │
+└──────────────────────────┴──────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ EDGE DISTANCE KEYWORDS (Vertical)                                          │
+├──────────────────────────┬──────────────────────────────────────────────────┤
+│ bb_edge                  │ sy1-oy1  (subject bottom to object bottom)      │
+│ bt_edge                  │ sy1-oy2  (subject bottom to object top)         │
+│ tb_edge                  │ sy2-oy1  (subject top to object bottom) ⭐      │
+│ tt_edge                  │ sy2-oy2  (subject top to object top)            │
+│                          │ ⭐ Most useful for vertical spacing!            │
+└──────────────────────────┴──────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
 │ SIZE KEYWORDS                                                               │
 ├──────────────────────────┬──────────────────────────────────────────────────┤
 │ swidth                   │ sx2-sx1  (subject width)                        │
@@ -147,6 +181,24 @@ Example 5: Match size
 Example 6: Self-constraint with keywords
     Before: cell.constrain('x2-x1=100, y2-y1=50')
     After:  cell.constrain('width=100, height=50')
+
+Example 7: Horizontal spacing using edge keywords ⭐
+    Before: parent.constrain(child2, 'sx1=ox2+10', child1)
+    After:  parent.constrain(child2, 'rl_edge=10', child1)
+    Note:   rl_edge measures from subject's right to object's left
+
+Example 8: Vertical spacing using edge keywords ⭐
+    Before: parent.constrain(child2, 'sy1=oy2+5', child1)
+    After:  parent.constrain(child2, 'tb_edge=5', child1)
+    Note:   tb_edge measures from subject's top to object's bottom
+
+Example 9: Check for overlap
+    Before: parent.constrain(child2, 'sx1-ox2<0', child1)  # overlap check
+    After:  parent.constrain(child2, 'lr_edge<0', child1)   # more readable!
+
+Example 10: Combined edge constraints
+    Before: parent.constrain(child2, 'sx1=ox2+10, sy1=oy1', child1)
+    After:  parent.constrain(child2, 'rl_edge=10, bb_edge=0', child1)
 
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                        COMBINING KEYWORDS                                  ║

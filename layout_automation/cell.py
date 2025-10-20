@@ -1007,7 +1007,9 @@ class Cell(FreezeMixin):
                     facecolor=layer_style.color,
                     edgecolor=layer_style.edge_color,
                     linewidth=layer_style.edge_width,
-                    alpha=layer_style.alpha
+                    linestyle=layer_style.line_style,
+                    alpha=layer_style.alpha,
+                    zorder=layer_style.zorder
                 )
                 ax.add_patch(patch)
 
@@ -1030,7 +1032,8 @@ class Cell(FreezeMixin):
                     edgecolor=edge_color,
                     linewidth=container_style.edge_width,
                     linestyle=container_style.linestyle,
-                    alpha=container_style.alpha
+                    alpha=container_style.alpha,
+                    zorder=container_style.zorder
                 )
                 ax.add_patch(patch)
 
@@ -1188,6 +1191,90 @@ class Cell(FreezeMixin):
 
         return None
 
+    @property
+    def width(self) -> Optional[float]:
+        """
+        Get the width of this cell (x2 - x1)
+
+        Returns:
+            Width of the cell, or None if position not yet determined
+
+        Example:
+            >>> cell.solver()
+            >>> print(f"Cell width: {cell.width}")
+        """
+        if all(v is not None for v in self.pos_list):
+            return self.pos_list[2] - self.pos_list[0]
+        return None
+
+    @property
+    def height(self) -> Optional[float]:
+        """
+        Get the height of this cell (y2 - y1)
+
+        Returns:
+            Height of the cell, or None if position not yet determined
+
+        Example:
+            >>> cell.solver()
+            >>> print(f"Cell height: {cell.height}")
+        """
+        if all(v is not None for v in self.pos_list):
+            return self.pos_list[3] - self.pos_list[1]
+        return None
+
+    @property
+    def x1(self) -> Optional[float]:
+        """Get the left x-coordinate (or None if not positioned)"""
+        return self.pos_list[0] if all(v is not None for v in self.pos_list) else None
+
+    @property
+    def y1(self) -> Optional[float]:
+        """Get the bottom y-coordinate (or None if not positioned)"""
+        return self.pos_list[1] if all(v is not None for v in self.pos_list) else None
+
+    @property
+    def x2(self) -> Optional[float]:
+        """Get the right x-coordinate (or None if not positioned)"""
+        return self.pos_list[2] if all(v is not None for v in self.pos_list) else None
+
+    @property
+    def y2(self) -> Optional[float]:
+        """Get the top y-coordinate (or None if not positioned)"""
+        return self.pos_list[3] if all(v is not None for v in self.pos_list) else None
+
+    @property
+    def cx(self) -> Optional[float]:
+        """
+        Get the center x-coordinate
+
+        Returns:
+            Center x-coordinate, or None if position not yet determined
+
+        Example:
+            >>> cell.solver()
+            >>> print(f"Center: ({cell.cx}, {cell.cy})")
+        """
+        if all(v is not None for v in self.pos_list):
+            return (self.pos_list[0] + self.pos_list[2]) / 2
+        return None
+
+    @property
+    def cy(self) -> Optional[float]:
+        """
+        Get the center y-coordinate
+
+        Returns:
+            Center y-coordinate, or None if position not yet determined
+
+        Example:
+            >>> cell.solver()
+            >>> print(f"Center: ({cell.cx}, {cell.cy})")
+        """
+        if all(v is not None for v in self.pos_list):
+            return (self.pos_list[1] + self.pos_list[3]) / 2
+        return None
+
     def fix_layout(self) -> 'Cell':
         """
         Fix the current layout, storing relative positions of all children.
@@ -1241,7 +1328,8 @@ class Cell(FreezeMixin):
                         child_x2 - px1,  # dx2
                         child_y2 - py1   # dy2
                     )
-                    cell._fixed_offsets[child.name] = offset
+                    # Use id(child) as key to handle multiple children with same name
+                    cell._fixed_offsets[id(child)] = offset
 
                     # Also recursively fix the child so it can update its own children
                     if not child.is_leaf and len(child.children) > 0 and not child._fixed:
@@ -1302,8 +1390,9 @@ class Cell(FreezeMixin):
             px1, py1 = parent_origin
 
             for child in cell.children:
-                if child.name in cell._fixed_offsets:
-                    dx1, dy1, dx2, dy2 = cell._fixed_offsets[child.name]
+                child_id = id(child)
+                if child_id in cell._fixed_offsets:
+                    dx1, dy1, dx2, dy2 = cell._fixed_offsets[child_id]
                     child.pos_list = [
                         px1 + dx1,
                         py1 + dy1,
