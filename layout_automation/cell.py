@@ -1359,13 +1359,20 @@ class Cell(FreezeMixin):
         """
         Get the width of this cell (x2 - x1)
 
+        Automatically solves the layout if positions are not yet determined.
+
         Returns:
-            Width of the cell, or None if position not yet determined
+            Width of the cell, or None if solver fails
 
         Example:
-            >>> cell.solver()
-            >>> print(f"Cell width: {cell.width}")
+            >>> cell.constrain('width=100, height=50')
+            >>> print(f"Cell width: {cell.width}")  # Auto-solves if needed
         """
+        # Auto-solve if positions not yet determined
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
+
         if all(v is not None for v in self.pos_list):
             return self.pos_list[2] - self.pos_list[0]
         return None
@@ -1375,35 +1382,74 @@ class Cell(FreezeMixin):
         """
         Get the height of this cell (y2 - y1)
 
+        Automatically solves the layout if positions are not yet determined.
+
         Returns:
-            Height of the cell, or None if position not yet determined
+            Height of the cell, or None if solver fails
 
         Example:
-            >>> cell.solver()
-            >>> print(f"Cell height: {cell.height}")
+            >>> cell.constrain('width=100, height=50')
+            >>> print(f"Cell height: {cell.height}")  # Auto-solves if needed
         """
+        # Auto-solve if positions not yet determined
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
+
         if all(v is not None for v in self.pos_list):
             return self.pos_list[3] - self.pos_list[1]
         return None
 
     @property
     def x1(self) -> Optional[float]:
-        """Get the left x-coordinate (or None if not positioned)"""
+        """
+        Get the left x-coordinate (auto-solves if needed)
+
+        Returns:
+            Left x-coordinate, or None if solver fails
+        """
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
         return self.pos_list[0] if all(v is not None for v in self.pos_list) else None
 
     @property
     def y1(self) -> Optional[float]:
-        """Get the bottom y-coordinate (or None if not positioned)"""
+        """
+        Get the bottom y-coordinate (auto-solves if needed)
+
+        Returns:
+            Bottom y-coordinate, or None if solver fails
+        """
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
         return self.pos_list[1] if all(v is not None for v in self.pos_list) else None
 
     @property
     def x2(self) -> Optional[float]:
-        """Get the right x-coordinate (or None if not positioned)"""
+        """
+        Get the right x-coordinate (auto-solves if needed)
+
+        Returns:
+            Right x-coordinate, or None if solver fails
+        """
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
         return self.pos_list[2] if all(v is not None for v in self.pos_list) else None
 
     @property
     def y2(self) -> Optional[float]:
-        """Get the top y-coordinate (or None if not positioned)"""
+        """
+        Get the top y-coordinate (auto-solves if needed)
+
+        Returns:
+            Top y-coordinate, or None if solver fails
+        """
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
         return self.pos_list[3] if all(v is not None for v in self.pos_list) else None
 
     @property
@@ -1411,13 +1457,20 @@ class Cell(FreezeMixin):
         """
         Get the center x-coordinate
 
+        Automatically solves the layout if positions are not yet determined.
+
         Returns:
-            Center x-coordinate, or None if position not yet determined
+            Center x-coordinate, or None if solver fails
 
         Example:
-            >>> cell.solver()
-            >>> print(f"Center: ({cell.cx}, {cell.cy})")
+            >>> cell.constrain('width=100, height=50')
+            >>> print(f"Center X: {cell.cx}")  # Auto-solves if needed
         """
+        # Auto-solve if positions not yet determined
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
+
         if all(v is not None for v in self.pos_list):
             return (self.pos_list[0] + self.pos_list[2]) / 2
         return None
@@ -1427,13 +1480,20 @@ class Cell(FreezeMixin):
         """
         Get the center y-coordinate
 
+        Automatically solves the layout if positions are not yet determined.
+
         Returns:
-            Center y-coordinate, or None if position not yet determined
+            Center y-coordinate, or None if solver fails
 
         Example:
-            >>> cell.solver()
-            >>> print(f"Center: ({cell.cx}, {cell.cy})")
+            >>> cell.constrain('width=100, height=50')
+            >>> print(f"Center Y: {cell.cy}")  # Auto-solves if needed
         """
+        # Auto-solve if positions not yet determined
+        if any(v is None for v in self.pos_list):
+            if not self.solver():
+                return None
+
         if all(v is not None for v in self.pos_list):
             return (self.pos_list[1] + self.pos_list[3]) / 2
         return None
