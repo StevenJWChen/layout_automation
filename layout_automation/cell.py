@@ -948,7 +948,8 @@ class Cell(FreezeMixin):
         Visualize the layout using matplotlib
 
         Args:
-            solve_first: If True, run solver before drawing
+            solve_first: If True, run solver before drawing (default True)
+                        If 'auto', only solves if positions are not yet determined
             ax: Matplotlib axes object (creates new if None)
             show: If True, display the plot
             show_labels: If True, show cell/layer labels
@@ -964,7 +965,11 @@ class Cell(FreezeMixin):
                 - 'bottom-right': Lower right corner
                 - 'center': Center of cell (old behavior)
         """
-        if solve_first:
+        # Auto-detect if solving is needed
+        needs_solving = any(v is None for v in self.pos_list)
+
+        # Solve if needed or explicitly requested
+        if needs_solving or solve_first:
             if not self.solver():
                 print("Warning: Solver failed to find solution")
                 return
