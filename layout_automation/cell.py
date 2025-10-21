@@ -1037,12 +1037,12 @@ class Cell(FreezeMixin):
                 )
                 ax.add_patch(patch)
 
-                # Add label with smart sizing
+                # Add label with fixed font size, name only, no background
                 if show_labels and label_mode != 'none':
-                    # Determine label content and styling based on mode and cell size
-                    label_text, fontsize, fontweight = self._get_smart_label(
-                        width, height, label_mode
-                    )
+                    # Always show only name, no layer
+                    label_text = self.name
+                    fontsize = 8  # Fixed font size
+                    fontweight = 'normal'
 
                     if label_text:  # Only draw if there's text
                         # Get label position and alignment
@@ -1050,11 +1050,10 @@ class Cell(FreezeMixin):
                             x1, y1, x2, y2, label_position
                         )
 
+                        # Draw text without background (no bbox)
                         ax.text(lx, ly, label_text, ha=ha, va=va,
                                fontsize=fontsize, weight=fontweight,
-                               color='black', alpha=1.0,
-                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
-                                       alpha=0.85, edgecolor='black', linewidth=0.5))
+                               color='black', alpha=1.0)
 
             else:
                 # Container cells: outline only, no fill
