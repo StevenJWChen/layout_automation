@@ -1047,9 +1047,9 @@ class Cell(FreezeMixin):
 
                         ax.text(lx, ly, label_text, ha=ha, va=va,
                                fontsize=fontsize, weight=fontweight,
-                               color='white', alpha=0.9,
-                               bbox=dict(boxstyle='round,pad=0.2', facecolor='black',
-                                       alpha=0.3, edgecolor='none'))
+                               color='black', alpha=1.0,
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                       alpha=0.85, edgecolor='black', linewidth=0.5))
 
             else:
                 # Container cells: outline only, no fill

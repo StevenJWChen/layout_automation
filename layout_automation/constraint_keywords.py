@@ -21,6 +21,12 @@ CONSTRAINT_KEYWORDS = {
     'top': 'sy2=oy2',
     'bottom': 'sy1=oy1',
 
+    # Single edge distance keywords (object to subject)
+    'l_edge': 'ox1-sx1',      # Distance from object left to subject left
+    'r_edge': 'ox2-sx2',      # Distance from object right to subject right
+    't_edge': 'oy2-sy2',      # Distance from object top to subject top
+    'b_edge': 'oy1-sy1',      # Distance from object bottom to subject bottom
+
     # Edge distance keywords (horizontal)
     # Format: {subject_edge}{object_edge}_edge
     # l=left(x1), r=right(x2), b=bottom(y1), t=top(y2)
@@ -112,6 +118,15 @@ def get_keyword_table():
 │ right                    │ sx2=ox2  (align right edges)                    │
 │ top                      │ sy2=oy2  (align top edges)                      │
 │ bottom                   │ sy1=oy1  (align bottom edges)                   │
+└──────────────────────────┴──────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ SINGLE EDGE DISTANCE KEYWORDS (Object to Subject)                         │
+├──────────────────────────┬──────────────────────────────────────────────────┤
+│ l_edge                   │ ox1-sx1  (object left to subject left)          │
+│ r_edge                   │ ox2-sx2  (object right to subject right)        │
+│ t_edge                   │ oy2-sy2  (object top to subject top)            │
+│ b_edge                   │ oy1-sy1  (object bottom to subject bottom)      │
 └──────────────────────────┴──────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
