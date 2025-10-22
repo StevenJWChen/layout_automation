@@ -1767,7 +1767,7 @@ class Cell(FreezeMixin):
         print(f"Exported to {filename}")
 
     def _convert_to_gds(self, lib: 'gdstk.Library', gds_cells_dict: Dict,
-                       layer_map: Dict, offset_x: float = 0, offset_y: float = 0):
+                       layer_map: Dict):
         """
         Recursively convert cell hierarchy to GDS format
 
@@ -1775,8 +1775,6 @@ class Cell(FreezeMixin):
             lib: GDS library object
             gds_cells_dict: Dictionary tracking already-converted cells
             layer_map: Mapping of layer names to (layer, datatype) tuples
-            offset_x: X offset for positioning
-            offset_y: Y offset for positioning
         """
         import gdstk
 
@@ -1787,6 +1785,10 @@ class Cell(FreezeMixin):
         # Create GDS cell
         gds_cell = lib.new_cell(self.name)
         gds_cells_dict[self.name] = gds_cell
+
+        # Get this cell's origin for calculating relative positions
+        parent_x1 = self.pos_list[0] if all(v is not None for v in self.pos_list) else 0
+        parent_y1 = self.pos_list[1] if all(v is not None for v in self.pos_list) else 0
 
         # Process children
         for child in self.children:
@@ -1810,23 +1812,19 @@ class Cell(FreezeMixin):
                     else:
                         leaf_gds_cell = gds_cells_dict[child.name]
 
-                    # Create reference to the leaf cell at its position
+                    # Create reference to the leaf cell at its position RELATIVE to parent
                     x1, y1, _, _ = child.pos_list
-                    x1 += offset_x
-                    y1 += offset_y
-                    ref = gdstk.Reference(leaf_gds_cell, origin=(x1, y1))
+                    ref = gdstk.Reference(leaf_gds_cell, origin=(x1 - parent_x1, y1 - parent_y1))
                     gds_cell.add(ref)
             else:
-                # Non-leaf cell - create reference
+                # Non-leaf cell - recursively convert it
                 child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map)
 
                 if all(v is not None for v in child.pos_list):
                     x1, y1, _, _ = child.pos_list
-                    x1 += offset_x
-                    y1 += offset_y
 
-                    # Create cell reference
-                    ref = gdstk.Reference(child_gds_cell, origin=(x1, y1))
+                    # Create cell reference at position RELATIVE to parent
+                    ref = gdstk.Reference(child_gds_cell, origin=(x1 - parent_x1, y1 - parent_y1))
                     gds_cell.add(ref)
 
         return gds_cell
@@ -1952,7 +1950,8 @@ class Cell(FreezeMixin):
                 # Create as leaf cell with layer name
                 leaf_cell = cls(gds_cell.name, layer_name)
                 # Position will be set by parent's reference origin
-                leaf_cell.pos_list = [0, 0, int(round(x2 - x1)), int(round(y2 - y1))]
+                # Keep as float to avoid cumulative rounding errors when offset is applied
+                leaf_cell.pos_list = [0.0, 0.0, x2 - x1, y2 - y1]
                 return leaf_cell
 
         # Normal case: cell with multiple polygons or references
