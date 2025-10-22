@@ -29,53 +29,70 @@ Comprehensive testing shows that cells named 'top' work correctly in GDS import/
 
 **Status:** ✅ **ISSUE FOUND AND FIXED**
 
-#### Root Cause
+#### Root Cause - Hierarchical Coordinate System Bug
 
-A **cumulative rounding error** occurred during GDS import due to rounding happening twice:
+The **REAL issue** was in the GDS export code, not rounding errors. When exporting hierarchical layouts, children were placed at **absolute positions** instead of **positions relative to their parent**.
 
-1. **First round**: When creating leaf cell from GDS polygon
-   ```python
-   # OLD CODE (line 1955)
-   leaf_cell.pos_list = [0, 0, int(round(x2 - x1)), int(round(y2 - y1))]
-   ```
+**The Bug in `_convert_to_gds()` (lines 1813-1830):**
 
-2. **Second round**: When applying reference offset
-   ```python
-   # In _apply_offset_recursive (lines 2029-2033)
-   cell.pos_list = [
-       int(round(cell.pos_list[0] + dx)),  # Rounding integer + offset
-       int(round(cell.pos_list[1] + dy)),
-       int(round(cell.pos_list[2] + dx)),  # Rounding integer + offset
-       int(round(cell.pos_list[3] + dy))
-   ]
-   ```
+```python
+# OLD BUGGY CODE
+# Created reference at absolute child position
+x1, y1, _, _ = child.pos_list
+x1 += offset_x  # offset_x was always 0
+y1 += offset_y  # offset_y was always 0
+ref = gdstk.Reference(child_gds_cell, origin=(x1, y1))
+```
 
 #### Example of the Bug
 
-Original position: `[10.7, 20.3, 40.9, 35.6]`
+Given hierarchy:
+```
+top_cell (0, 0, 1000, 1000)
+  └─ mid_level (100, 100, 500, 500)
+      └─ leaf (150, 150, 250, 250)
+```
 
-**Buggy behavior:**
-- Export stores rectangle (0, 0) to (30.2, 15.3) with reference at (10.7, 20.3)
-- Import creates leaf: `[0, 0, round(30.2)=30, round(15.3)=15]`
-- Apply offset: `[round(0+10.7)=11, round(0+20.3)=20, round(30+10.7)=41, round(15+20.3)=35]`
-- **Result: `[11, 20, 41, 35]` - Error on y2: 35 instead of 36!**
+**What should happen:**
+- Leaf should be at (50, 50) relative to mid_level (150-100 = 50)
+- GDS file: mid_level references leaf at **(50, 50)**
+- On import: 100 + 50 = **150** ✓
 
-**Expected:** `round(35.6) = 36`
-**Got:** `round(15 + 20.3) = round(35.3) = 35` ❌
+**What actually happened:**
+- Leaf was exported at absolute position (150, 150) in mid_level
+- GDS file: mid_level references leaf at **(150, 150)** ✗
+- On import: 100 + 150 = **250** ✗ (shifted by 100!)
 
 #### The Fix
 
-Modified `_from_gds_cell()` in `layout_automation/cell.py` line 1956:
+Modified `_convert_to_gds()` in `layout_automation/cell.py` lines 1769-1830:
 
 ```python
-# NEW CODE - Keep dimensions as floats
-leaf_cell.pos_list = [0.0, 0.0, x2 - x1, y2 - y1]
+# NEW FIXED CODE
+# Get parent's origin for relative positioning
+parent_x1 = self.pos_list[0] if all(v is not None for v in self.pos_list) else 0
+parent_y1 = self.pos_list[1] if all(v is not None for v in self.pos_list) else 0
+
+# Place children relative to parent
+x1, y1, _, _ = child.pos_list
+ref = gdstk.Reference(child_gds_cell, origin=(x1 - parent_x1, y1 - parent_y1))
 ```
 
-Now rounding only happens once, after adding the offset:
-- Import creates leaf: `[0.0, 0.0, 30.2, 15.3]` (floats!)
-- Apply offset: `[round(0+10.7)=11, round(0+20.3)=20, round(30.2+10.7)=41, round(15.3+20.3)=36]`
-- **Result: `[11, 20, 41, 36]` ✓ Correct!**
+**Now exports correctly:**
+- Leaf at (150, 150) with parent at (100, 100)
+- GDS file: mid_level references leaf at **(50, 50)** ✓ relative position!
+- On import: 100 + 50 = **150** ✓ Correct!
+
+#### Minor Fix - Rounding Precision
+
+Also fixed a minor rounding issue in `_from_gds_cell()` line 1956:
+
+```python
+# Keep leaf dimensions as floats to avoid cumulative rounding errors
+leaf_cell.pos_list = [0.0, 0.0, x2 - x1, y2 - y1]  # Not int(round(...))
+```
+
+This ensures rounding happens only once at the final position calculation.
 
 ---
 
@@ -83,66 +100,106 @@ Now rounding only happens once, after adding the offset:
 
 Created comprehensive test suite to verify the fixes:
 
-### `test_gds_simple.py` - Full test suite with 4 test cases
+### `test_gds_hierarchy_detail.py` - Hierarchical position verification
 
-**Test 1: Cell named 'top'**
-- ✅ Export/import succeeds
-- ✅ Cell name preserved: 'top'
-- ✅ Child positions match exactly
+**Confirms the main fix:**
+- ✅ Before fix: mid_level referenced leaf at **(150, 150)** - absolute, wrong
+- ✅ After fix: mid_level references leaf at **(50, 50)** - relative, correct!
+- ✅ Imported position: [150, 150, 250, 250] with **shift [0, 0, 0, 0]** ✓
 
-**Test 2: Cell named 'my_layout' (control)**
-- ✅ Works identically to 'top' (confirms no special behavior)
+### `test_gds_shift_deep.py` - Comprehensive position shift tests
 
-**Test 3: Floating point position rounding**
-- ✅ Position [10.7, 20.3, 40.9, 35.6] correctly imports as [11, 20, 41, 36]
-- ✅ All coordinates round correctly:
-  - 10.7 → 11 ✓
-  - 20.3 → 20 ✓
-  - 40.9 → 41 ✓
-  - 35.6 → 36 ✓ (was 35 before fix)
+**Test 1: Simple leaf cells**
+- ✅ All positions preserved exactly (rect1, rect2, rect3)
 
-**Test 4: Nested hierarchy with 'top' name**
-- ✅ 3-level hierarchy works correctly
-- ✅ Root name 'top' preserved
-- ✅ All children imported correctly
+**Test 3: Hierarchical cells (3 levels)**
+- ✅ **Before fix:** leaf positions shifted by parent offset (100, 100) and (600, 600)
+- ✅ **After fix:** All leaf positions preserved perfectly:
+  - leaf1: [150, 150, 250, 250] - no shift ✓
+  - leaf2: [300, 300, 450, 450] - no shift ✓
+  - leaf3: [650, 650, 850, 850] - no shift ✓
 
-### `test_gds_trace.py` - Diagnostic trace
+### `test_gds_relative_check.py` - Relative position preservation
 
-Detailed trace showing:
-- Exact values at each step of export/import
-- How GDS stores polygon coordinates
-- Where rounding occurs
-- Analysis of the bug and fix
+- ✅ Inter-child spacing preserved: [400, 400, 500, 500] maintained
+- ✅ Relative positions between siblings maintained correctly
+
+### `test_gds_reuse.py` - Multi-cycle export/import test
+
+**Tests GDS IP reuse workflow:**
+- ✅ Export hierarchical layout
+- ✅ Import it back
+- ✅ Use imported cell in NEW layout
+- ✅ Export and import again
+- ✅ **All relative spacings preserved through multiple cycles!**
+
+### `test_gds_simple.py` - Basic functionality tests
+
+**Test 1-2: Cell naming**
+- ✅ Cell 'top' works correctly
+- ✅ Any cell name works identically
+
+**Test 3: Floating point rounding**
+- ✅ Position [10.7, 20.3, 40.9, 35.6] imports as [11, 20, 41, 36]
+- ✅ All coordinates round correctly (35.6 → 36, not 35)
+
+### `test_gds_trace.py` - Diagnostic rounding trace
+
+- Shows exact rounding behavior at each step
+- Demonstrates minor rounding fix working correctly
 
 ---
 
 ## Files Changed
 
-- **layout_automation/cell.py** (line 1956)
-  Changed `int(round(x2 - x1))` to `x2 - x1` to preserve float precision
+### Main Fix - `layout_automation/cell.py`
+
+**Lines 1769-1830: `_convert_to_gds()` method**
+- Removed unused `offset_x` and `offset_y` parameters
+- Added `parent_x1` and `parent_y1` calculation from `self.pos_list`
+- Changed child reference placement from absolute to relative:
+  - Old: `origin=(x1, y1)` - absolute position
+  - New: `origin=(x1 - parent_x1, y1 - parent_y1)` - relative position
+
+**Line 1956: `_from_gds_cell()` method**
+- Minor fix: Keep leaf dimensions as floats instead of rounding
+- Changed `int(round(x2-x1))` to `x2-x1` to preserve precision
 
 ## Impact
 
-- **Fixes:** Polygon position shifts in GDS import/export
-- **No Breaking Changes:** Existing code continues to work
-- **Performance:** No impact (same number of operations)
-- **Precision:** Improved accuracy of GDS round-trips
+### Fixed Issues
+- ✅ **Hierarchical position shifts** - MAJOR FIX
+  - Multi-level layouts now export/import correctly
+  - No more cumulative position shifts in nested structures
+- ✅ **Rounding precision** - Minor improvement
+  - Fractional coordinates round correctly
+
+### Compatibility
+- ✅ **No Breaking Changes** - Existing flat layouts continue to work
+- ✅ **Backward Compatible** - Old GDS files can still be imported
+- ⚠️ **Re-export Recommended** - GDS files with hierarchies should be re-exported with fixed version for accuracy
+
+### Performance
+- ✅ **No Performance Impact** - Same computational complexity
 
 ---
 
 ## Recommendations
 
-1. ✅ **Use the fixed version** - polygon positions now preserve correctly
-2. ✅ **Cell name 'top' is safe** - no special handling needed
-3. If you encounter position shifts in existing GDS files, re-export with the fixed version
+1. ✅ **Re-export hierarchical GDS files** - If you have multi-level layouts, re-export them with the fixed version
+2. ✅ **Cell name 'top' is safe** - Use any cell name without concerns
+3. ✅ **IP reuse workflow validated** - Can safely import GDS cells and reuse them
+4. ✅ **Position verification** - Use test suite to verify your layouts if needed
 
 ---
 
 ## Summary
 
-| Issue | Status | Solution |
-|-------|--------|----------|
-| Cell name 'top' issues | ✅ No issue found | None needed |
-| Polygon position shift | ✅ Fixed | Keep float precision until final rounding |
+| Issue | Status | Root Cause | Solution |
+|-------|--------|------------|----------|
+| Cell name 'top' issues | ✅ No issue found | N/A | None needed |
+| Position shift (flat) | ✅ Always worked | N/A | None needed |
+| **Position shift (hierarchical)** | ✅ **FIXED** | **Absolute coords instead of relative** | **Use relative positioning** |
+| Rounding precision | ✅ Fixed | Premature rounding | Keep floats until final calc |
 
-Both issues have been investigated and resolved. The GDS import/export functionality now works correctly.
+**Main Achievement:** Hierarchical GDS export/import now works correctly with proper relative coordinate handling!
