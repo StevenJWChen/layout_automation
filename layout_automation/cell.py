@@ -1767,24 +1767,41 @@ class Cell(FreezeMixin):
         print(f"Exported to {filename}")
 
     def _convert_to_gds(self, lib: 'gdstk.Library', gds_cells_dict: Dict,
-                       layer_map: Dict):
+                       layer_map: Dict, gds_name_counter: Dict = None):
         """
         Recursively convert cell hierarchy to GDS format
 
         Args:
             lib: GDS library object
-            gds_cells_dict: Dictionary tracking already-converted cells
+            gds_cells_dict: Dictionary tracking already-converted cells (key: cell id)
             layer_map: Mapping of layer names to (layer, datatype) tuples
+            gds_name_counter: Dictionary tracking used GDS cell names for uniqueness
         """
         import gdstk
 
-        # Skip if already converted
-        if self.name in gds_cells_dict:
-            return gds_cells_dict[self.name]
+        # Initialize name counter on first call
+        if gds_name_counter is None:
+            gds_name_counter = {}
 
-        # Create GDS cell
-        gds_cell = lib.new_cell(self.name)
-        gds_cells_dict[self.name] = gds_cell
+        # Use cell object ID as key to avoid name collisions
+        cell_id = id(self)
+
+        # Skip if already converted
+        if cell_id in gds_cells_dict:
+            return gds_cells_dict[cell_id]
+
+        # Generate unique GDS cell name if this name has been used
+        gds_cell_name = self.name
+        if gds_cell_name in gds_name_counter:
+            # Name collision - append counter
+            gds_name_counter[gds_cell_name] += 1
+            gds_cell_name = f"{self.name}_{gds_name_counter[gds_cell_name]}"
+        else:
+            gds_name_counter[gds_cell_name] = 0
+
+        # Create GDS cell with unique name
+        gds_cell = lib.new_cell(gds_cell_name)
+        gds_cells_dict[cell_id] = gds_cell
 
         # Get this cell's origin for calculating relative positions
         parent_x1 = self.pos_list[0] if all(v is not None for v in self.pos_list) else 0
@@ -1792,13 +1809,23 @@ class Cell(FreezeMixin):
 
         # Process children
         for child in self.children:
+            child_id = id(child)
+
             if child.is_leaf:
                 # Leaf cell - create as a separate GDS cell to preserve name
                 if all(v is not None for v in child.pos_list):
-                    # Create or get the leaf's GDS cell
-                    if child.name not in gds_cells_dict:
-                        leaf_gds_cell = lib.new_cell(child.name)
-                        gds_cells_dict[child.name] = leaf_gds_cell
+                    # Create or get the leaf's GDS cell using child object ID
+                    if child_id not in gds_cells_dict:
+                        # Generate unique GDS name for leaf
+                        leaf_gds_name = child.name
+                        if leaf_gds_name in gds_name_counter:
+                            gds_name_counter[leaf_gds_name] += 1
+                            leaf_gds_name = f"{child.name}_{gds_name_counter[leaf_gds_name]}"
+                        else:
+                            gds_name_counter[leaf_gds_name] = 0
+
+                        leaf_gds_cell = lib.new_cell(leaf_gds_name)
+                        gds_cells_dict[child_id] = leaf_gds_cell
 
                         # Get layer and datatype
                         layer, datatype = layer_map.get(child.layer_name, (0, 0))
@@ -1810,7 +1837,7 @@ class Cell(FreezeMixin):
                         rect = gdstk.rectangle((0, 0), (width, height), layer=layer, datatype=datatype)
                         leaf_gds_cell.add(rect)
                     else:
-                        leaf_gds_cell = gds_cells_dict[child.name]
+                        leaf_gds_cell = gds_cells_dict[child_id]
 
                     # Create reference to the leaf cell at its position RELATIVE to parent
                     x1, y1, _, _ = child.pos_list
@@ -1818,7 +1845,7 @@ class Cell(FreezeMixin):
                     gds_cell.add(ref)
             else:
                 # Non-leaf cell - recursively convert it
-                child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map)
+                child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map, gds_name_counter)
 
                 if all(v is not None for v in child.pos_list):
                     x1, y1, _, _ = child.pos_list
