@@ -1952,7 +1952,8 @@ class Cell(FreezeMixin):
                 # Create as leaf cell with layer name
                 leaf_cell = cls(gds_cell.name, layer_name)
                 # Position will be set by parent's reference origin
-                leaf_cell.pos_list = [0, 0, int(round(x2 - x1)), int(round(y2 - y1))]
+                # Keep as float to avoid cumulative rounding errors when offset is applied
+                leaf_cell.pos_list = [0.0, 0.0, x2 - x1, y2 - y1]
                 return leaf_cell
 
         # Normal case: cell with multiple polygons or references
