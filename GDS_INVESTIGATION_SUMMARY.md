@@ -201,5 +201,35 @@ Created comprehensive test suite to verify the fixes:
 | Position shift (flat) | ✅ Always worked | N/A | None needed |
 | **Position shift (hierarchical)** | ✅ **FIXED** | **Absolute coords instead of relative** | **Use relative positioning** |
 | Rounding precision | ✅ Fixed | Premature rounding | Keep floats until final calc |
+| **Cell name collisions** | ✅ **FIXED** | **Used name as dict key** | **Use object ID as key** |
 
-**Main Achievement:** Hierarchical GDS export/import now works correctly with proper relative coordinate handling!
+**Main Achievements:**
+1. Hierarchical GDS export/import now works correctly with proper relative coordinate handling!
+2. Cells with duplicate names in different hierarchy branches are preserved correctly!
+
+---
+
+## Additional Fix: Cell Name Collision (NEW)
+
+### Issue
+When multiple cells in different parts of the hierarchy had the same name, the GDS export would overwrite them because it used `cell.name` as the dictionary key.
+
+**Example:**
+```python
+block1/rect: 100x100 metal1
+block2/rect: 200x200 metal2
+```
+
+**Bug:** Only ONE 'rect' cell exported (100x100), second was lost!
+
+### Root Cause
+Line 1782-1787 and 1799-1813 used `gds_cells_dict[child.name]` as the key, causing overwrites.
+
+### Solution (Commit fe6401d)
+- Changed dictionary key from `cell.name` to `id(cell)`
+- Added `gds_name_counter` to track used GDS names
+- Generate unique suffixes for duplicates: `rect`, `rect_1`, `rect_2`, etc.
+
+### Result
+✅ All cells preserved with unique GDS names
+✅ Verified by `test_gds_name_collision.py`
