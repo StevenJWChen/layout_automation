@@ -1758,16 +1758,28 @@ class Cell(FreezeMixin):
         # Create GDS library
         lib = gdstk.Library(name="LAYOUT", unit=unit, precision=precision)
 
+        # Track undefined layers during conversion
+        undefined_layers = {}
+        next_layer_number = 200  # Start auto-assigned layers at 200
+
         # Convert cell hierarchy to GDS
         gds_cells_dict = {}
-        self._convert_to_gds(lib, gds_cells_dict, layer_map)
+        self._convert_to_gds(lib, gds_cells_dict, layer_map, undefined_layers=undefined_layers, next_layer_number=[next_layer_number])
 
         # Write to file
         lib.write_gds(filename)
         print(f"Exported to {filename}")
 
+        # Save layer mapping config file if there were undefined layers
+        if undefined_layers:
+            import os
+            config_file = os.path.splitext(filename)[0] + '.layermap'
+            self._save_layer_config(config_file, undefined_layers, layer_map)
+            print(f"Saved layer mapping to {config_file} ({len(undefined_layers)} undefined layers)")
+
     def _convert_to_gds(self, lib: 'gdstk.Library', gds_cells_dict: Dict,
-                       layer_map: Dict, gds_name_counter: Dict = None):
+                       layer_map: Dict, gds_name_counter: Dict = None,
+                       undefined_layers: Dict = None, next_layer_number: list = None):
         """
         Recursively convert cell hierarchy to GDS format
 
@@ -1776,6 +1788,8 @@ class Cell(FreezeMixin):
             gds_cells_dict: Dictionary tracking already-converted cells (key: cell id)
             layer_map: Mapping of layer names to (layer, datatype) tuples
             gds_name_counter: Dictionary tracking used GDS cell names for uniqueness
+            undefined_layers: Dictionary to track layers not in layer_map (auto-assigned)
+            next_layer_number: List with single int for next auto-assigned layer number
         """
         import gdstk
 
@@ -1828,7 +1842,22 @@ class Cell(FreezeMixin):
                         gds_cells_dict[child_id] = leaf_gds_cell
 
                         # Get layer and datatype
-                        layer, datatype = layer_map.get(child.layer_name, (0, 0))
+                        if child.layer_name in layer_map:
+                            layer, datatype = layer_map[child.layer_name]
+                        else:
+                            # Layer not defined - auto-assign and track
+                            if undefined_layers is not None and child.layer_name not in undefined_layers:
+                                # Assign new layer number
+                                layer = next_layer_number[0]
+                                datatype = 0
+                                undefined_layers[child.layer_name] = (layer, datatype)
+                                next_layer_number[0] += 1
+                            elif undefined_layers is not None:
+                                # Already assigned
+                                layer, datatype = undefined_layers[child.layer_name]
+                            else:
+                                # Fallback
+                                layer, datatype = (0, 0)
 
                         # Add rectangle to the leaf cell at origin
                         x1, y1, x2, y2 = child.pos_list
@@ -1845,7 +1874,7 @@ class Cell(FreezeMixin):
                     gds_cell.add(ref)
             else:
                 # Non-leaf cell - recursively convert it
-                child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map, gds_name_counter)
+                child_gds_cell = child._convert_to_gds(lib, gds_cells_dict, layer_map, gds_name_counter, undefined_layers, next_layer_number)
 
                 if all(v is not None for v in child.pos_list):
                     x1, y1, _, _ = child.pos_list
@@ -1855,6 +1884,66 @@ class Cell(FreezeMixin):
                     gds_cell.add(ref)
 
         return gds_cell
+
+    def _save_layer_config(self, config_file: str, undefined_layers: Dict, defined_layers: Dict):
+        """
+        Save layer mapping configuration file for undefined layers
+
+        Args:
+            config_file: Path to save the config file
+            undefined_layers: Dictionary of auto-assigned layers {layer_name: (layer_num, datatype)}
+            defined_layers: Dictionary of defined layers for reference
+        """
+        import json
+        import os
+        from datetime import datetime
+
+        config = {
+            'metadata': {
+                'generated': datetime.now().isoformat(),
+                'description': 'Auto-generated GDS layer mapping for undefined layers',
+                'note': 'Layers from tech file or defaults are not included here'
+            },
+            'undefined_layers': {
+                name: {'layer': layer, 'datatype': dt}
+                for name, (layer, dt) in undefined_layers.items()
+            },
+            'defined_layers_count': len(defined_layers)
+        }
+
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+
+    @classmethod
+    def _load_layer_config(cls, config_file: str) -> Dict[str, Tuple[int, int]]:
+        """
+        Load layer mapping from config file
+
+        Args:
+            config_file: Path to the config file
+
+        Returns:
+            Dictionary mapping layer names to (layer_num, datatype) tuples
+        """
+        import json
+        import os
+
+        if not os.path.exists(config_file):
+            return {}
+
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+
+            layer_map = {}
+            if 'undefined_layers' in config:
+                for name, mapping in config['undefined_layers'].items():
+                    layer_map[name] = (mapping['layer'], mapping['datatype'])
+
+            return layer_map
+        except Exception as e:
+            print(f"Warning: Could not load layer config {config_file}: {e}")
+            return {}
 
     @classmethod
     def from_gds(cls, filename: str, cell_name: Optional[str] = None,
@@ -1916,6 +2005,17 @@ class Cell(FreezeMixin):
                 (100, 0): 'via4',
                 (120, 0): 'via5',
             }
+
+        # Auto-load layer config file if it exists
+        import os
+        config_file = os.path.splitext(filename)[0] + '.layermap'
+        if os.path.exists(config_file):
+            config_layers = cls._load_layer_config(config_file)
+            if config_layers:
+                # Merge config layers into layer_map (reverse mapping)
+                for name, (layer, dt) in config_layers.items():
+                    layer_map[(layer, dt)] = name
+                print(f"Loaded additional {len(config_layers)} layers from {os.path.basename(config_file)}")
 
         # Read GDS file
         lib = gdstk.read_gds(filename)
