@@ -11,8 +11,107 @@ Handles:
 """
 
 import re
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 from layout_automation.style_config import get_style_config
+
+
+class DRCRule:
+    """Represents a single DRC rule"""
+
+    def __init__(self, rule_type: str, layer1: str, layer2: Optional[str] = None, value: float = 0.0):
+        """
+        Initialize DRC rule
+
+        Args:
+            rule_type: Type of rule (minWidth, minSpacing, minSameNetSpacing, minEnclosure, etc.)
+            layer1: Primary layer name
+            layer2: Secondary layer name (for spacing between different layers)
+            value: Rule value (in microns)
+        """
+        self.rule_type = rule_type
+        self.layer1 = layer1
+        self.layer2 = layer2
+        self.value = value
+
+    def __repr__(self):
+        if self.layer2:
+            return f"DRCRule({self.rule_type}, {self.layer1}, {self.layer2}, {self.value})"
+        else:
+            return f"DRCRule({self.rule_type}, {self.layer1}, {self.value})"
+
+    def applies_to(self, layer: str) -> bool:
+        """Check if rule applies to a given layer"""
+        return self.layer1 == layer or (self.layer2 is not None and self.layer2 == layer)
+
+
+class DRCRuleSet:
+    """Collection of DRC rules"""
+
+    def __init__(self):
+        """Initialize empty rule set"""
+        self.rules: List[DRCRule] = []
+        self.width_rules: Dict[str, float] = {}  # layer -> min width
+        self.spacing_rules: Dict[str, float] = {}  # layer -> min spacing
+        self.same_net_spacing_rules: Dict[str, float] = {}  # layer -> min same-net spacing
+        self.layer_pair_spacing: Dict[Tuple[str, str], float] = {}  # (layer1, layer2) -> min spacing
+
+    def add_rule(self, rule: DRCRule):
+        """Add a DRC rule to the set"""
+        self.rules.append(rule)
+
+        # Index by type for fast lookup
+        if rule.rule_type == 'minWidth':
+            self.width_rules[rule.layer1] = rule.value
+        elif rule.rule_type == 'minSpacing':
+            if rule.layer2:
+                # Spacing between two different layers
+                key = tuple(sorted([rule.layer1, rule.layer2]))
+                self.layer_pair_spacing[key] = rule.value
+            else:
+                # Spacing on same layer
+                self.spacing_rules[rule.layer1] = rule.value
+        elif rule.rule_type == 'minSameNetSpacing':
+            self.same_net_spacing_rules[rule.layer1] = rule.value
+
+    def get_min_width(self, layer: str) -> Optional[float]:
+        """Get minimum width for a layer"""
+        return self.width_rules.get(layer)
+
+    def get_min_spacing(self, layer: str) -> Optional[float]:
+        """Get minimum spacing for a layer"""
+        return self.spacing_rules.get(layer)
+
+    def get_min_same_net_spacing(self, layer: str) -> Optional[float]:
+        """Get minimum same-net spacing for a layer"""
+        return self.same_net_spacing_rules.get(layer)
+
+    def get_layer_pair_spacing(self, layer1: str, layer2: str) -> Optional[float]:
+        """Get minimum spacing between two different layers"""
+        key = tuple(sorted([layer1, layer2]))
+        return self.layer_pair_spacing.get(key)
+
+    def print_summary(self):
+        """Print summary of DRC rules"""
+        print(f"\nDRC Rule Summary")
+        print(f"Total rules: {len(self.rules)}")
+
+        print("\nWidth Rules:")
+        for layer, value in sorted(self.width_rules.items()):
+            print(f"  {layer:15} minWidth: {value}")
+
+        print("\nSpacing Rules:")
+        for layer, value in sorted(self.spacing_rules.items()):
+            print(f"  {layer:15} minSpacing: {value}")
+
+        if self.layer_pair_spacing:
+            print("\nLayer-Pair Spacing Rules:")
+            for (l1, l2), value in sorted(self.layer_pair_spacing.items()):
+                print(f"  {l1} <-> {l2:15} minSpacing: {value}")
+
+        if self.same_net_spacing_rules:
+            print("\nSame-Net Spacing Rules:")
+            for layer, value in sorted(self.same_net_spacing_rules.items()):
+                print(f"  {layer:15} minSameNetSpacing: {value}")
 
 
 class LayerMapping:
@@ -53,6 +152,7 @@ class TechFile:
         self.tech_name = "unknown"
         self.drf_colors: Dict[str, str] = {}  # color_name -> hex color
         self.drf_packets: Dict[str, str] = {}  # packet_name -> fill_color
+        self.drc_rules = DRCRuleSet()  # DRC rule set
 
     def add_layer(self, mapping: LayerMapping):
         """Add a layer mapping"""
@@ -113,7 +213,10 @@ class TechFile:
         # Parse display resources (colors)
         self._parse_display_resources(content)
 
-        print(f"[OK] Loaded {len(self.layers)} layer mappings")
+        # Parse DRC rules from constraintGroups section
+        self._parse_drc_rules(content)
+
+        print(f"[OK] Loaded {len(self.layers)} layer mappings and {len(self.drc_rules.rules)} DRC rules")
 
     def parse_drf_file(self, filepath: str):
         """
@@ -477,6 +580,54 @@ class TechFile:
         }
 
         return color_map.get(virtuoso_color.lower(), virtuoso_color)
+
+    def _parse_drc_rules(self, content: str):
+        """Parse DRC rules from constraintGroups section"""
+        # Find constraintGroups section
+        constraint_section = self._extract_balanced_section(content, 'constraintGroups')
+        if not constraint_section:
+            return
+
+        # Find spacings subsection (FreePDK45 format)
+        spacings_section = self._extract_balanced_section(constraint_section, 'spacings')
+        if not spacings_section:
+            return
+
+        # Parse DRC rule entries
+        # Format: ( ruleType "layer1" value )
+        # Format: ( ruleType "layer1" "layer2" value )
+
+        # Pattern for single-layer rules (width, spacing)
+        # Example: ( minWidth "poly" 0.05 )
+        single_layer_pattern = r'\(\s*(\w+)\s+"([^"]+)"\s+([\d.]+)\s*\)'
+
+        # Pattern for two-layer rules (spacing between layers)
+        # Example: ( minSpacing "nwell" "active" 0.055 )
+        two_layer_pattern = r'\(\s*(\w+)\s+"([^"]+)"\s+"([^"]+)"\s+([\d.]+)\s*\)'
+
+        # First parse two-layer rules (more specific pattern)
+        for match in re.finditer(two_layer_pattern, spacings_section):
+            rule_type = match.group(1)
+            layer1 = match.group(2)
+            layer2 = match.group(3)
+            value = float(match.group(4))
+
+            rule = DRCRule(rule_type, layer1, layer2, value)
+            self.drc_rules.add_rule(rule)
+
+        # Then parse single-layer rules
+        for match in re.finditer(single_layer_pattern, spacings_section):
+            # Skip if this is part of a two-layer rule
+            full_match = match.group(0)
+            if re.search(r'"[^"]+"\s+"[^"]+"\s+[\d.]+', full_match):
+                continue
+
+            rule_type = match.group(1)
+            layer = match.group(2)
+            value = float(match.group(3))
+
+            rule = DRCRule(rule_type, layer, None, value)
+            self.drc_rules.add_rule(rule)
 
     def create_generic_tech(self, tech_name: str = 'generic'):
         """Create a generic technology with common layers"""

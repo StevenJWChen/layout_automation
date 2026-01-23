@@ -53,3 +53,13 @@ tests/*.png
 *_extracted.txt
 *_report.txt
 *drc_violations.txt
+
+# DRC test outputs (root level)
+test_*.gds
+demo_*.gds
+*_initial.txt
+*_final.txt
+
+# Hierarchical layout test outputs
+hierarchical_*.gds
+hierarchical_*.txt
